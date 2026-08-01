@@ -4,39 +4,39 @@
 
 | 名称 | 色值 | 用途 |
 |-----|------|------|
-| Primary | `#6366f1` | 主按钮、FAB、强调元素、激活状态 |
-| Primary Dark | `#4f46e5` | 按下态、hover 加深 |
+| Primary | `#c96442` | 主按钮、发送按钮、强调元素 |
+| Primary Dark | `#a95034` | 按下态、hover 加深 |
 | Success | `#22c55e` | 已连接状态、成功提示 |
 | Warning | `#f59e0b` | 连接中、重连中 |
 | Danger | `#ef4444` | 错误、断开连接 |
 | Danger Light | `#fca5a5` | 危险操作边框（如清除配置） |
-| Muted | `#9ca3af` | 禁用状态、次要分割线 |
+| Muted | `#87867f` | 禁用状态、辅助信息 |
 
 ## 背景色
 
 | 名称 | 色值 | 用途 |
 |-----|------|------|
-| bg-base | `#ffffff` | 页面主背景 |
-| bg-subtle | `#f9f9f9` | 卡片背景、配置页输入区 |
-| bg-input | `#f5f5f5` | 输入框背景 |
-| bg-bubble | `#f0f0f0` | AI 聊天气泡 |
+| bg-base | `#f5f4ed` | 页面主背景 |
+| bg-subtle | `#e8e6dc` | 按下态、暖色分区背景 |
+| bg-input | `#faf9f5` | 输入框和抬升表面 |
+| bg-bubble | `#e8e6dc` | 需要区隔时的消息背景 |
 
 ## 文字色
 
 | 名称 | 色值 | 用途 |
 |-----|------|------|
-| text-base | `#111111` | 主标题、正文 |
-| text-secondary | `#333333` | 副标题 |
-| text-tertiary | `#666666` | 状态文字 |
-| text-muted | `#888888` | 预览文字、辅助信息 |
-| text-placeholder | `#999999` | 输入框占位符 |
+| text-base | `#141413` | 主标题、正文、用户消息背景 |
+| text-secondary | `#3d3d3a` | 副标题 |
+| text-tertiary | `#5e5d59` | 状态文字 |
+| text-muted | `#87867f` | 预览文字、辅助信息 |
+| text-placeholder | `#87867f` | 输入框占位符 |
 
 ## 边框色
 
 | 名称 | 色值 | 用途 |
 |-----|------|------|
-| border | `#e0e0e0` | 分割线、输入框边框 |
-| border-light | `#e8e8e8` | 列表项分隔线 |
+| border | `#e8e6dc` | 输入框边框 |
+| border-light | `#f0eee6` | 导航栏、输入区分隔线 |
 
 ## 语义色
 

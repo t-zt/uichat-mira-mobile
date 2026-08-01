@@ -28,6 +28,10 @@ jest.mock('../src/screens/HostConfigScreen', () => ({
   HostConfigScreen: 'HostConfigScreen',
 }));
 
+jest.mock('../src/screens/SettingsScreen', () => ({
+  SettingsScreen: 'SettingsScreen',
+}));
+
 import App from '../App';
 
 describe('App', () => {

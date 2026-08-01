@@ -17,7 +17,7 @@ export interface ThemeColors {
     card: string;
     soft: string;
     input: string;
-    userMsg: string;
+    bubble: string;
     elevated: string;
   };
 
@@ -38,33 +38,33 @@ export interface ThemeColors {
   divider: string;
 }
 
-// ─── Light Theme — Clean White (tomz.io coral clay accent) ───
+// ─── Light Theme — Mira warm canvas (tomz.io coral clay) ───
 export const lightColors: ThemeColors = {
-  primary: '#cc785c',
-  primaryActive: '#a9583e',
-  primaryDisabled: '#e6dfd8',
+  primary: designColors.primary,
+  primaryActive: designColors.primaryActive,
+  primaryDisabled: designColors.primaryDisabled,
 
   text: {
-    ink: '#141413',
-    base: '#3d3d3a',
-    strong: '#252523',
-    muted: '#6c6a64',
-    soft: '#8e8b82',
-    placeholder: '#8e8b82',
+    ink: designColors.text.ink,
+    base: designColors.text.base,
+    strong: designColors.text.strong,
+    muted: designColors.text.muted,
+    soft: designColors.text.soft,
+    placeholder: designColors.text.placeholder,
   },
 
   bg: {
-    canvas: '#faf9f5',
-    card: '#efe9de',
-    soft: '#f5f0e8',
-    input: '#f5f0e8',
-    userMsg: '#efe9de',
+    canvas: designColors.bg.canvas,
+    card: designColors.bg.card,
+    soft: designColors.bg.soft,
+    input: designColors.bg.input,
+    bubble: designColors.bg.bubble,
     elevated: '#FFFFFF',
   },
 
   border: {
-    default: '#e6dfd8',
-    soft: '#ebe6df',
+    default: designColors.border.default,
+    soft: designColors.border.soft,
   },
 
   status: {
@@ -76,7 +76,7 @@ export const lightColors: ThemeColors = {
 
   onPrimary: '#FFFFFF',
   overlay: 'rgba(0,0,0,0.4)',
-  divider: '#ebe6df',
+  divider: designColors.border.soft,
 };
 
 // ─── Dark Theme (tomz.io coral clay accent) ───
@@ -99,7 +99,7 @@ export const darkColors: ThemeColors = {
     card: '#252320',
     soft: '#1f1e1b',
     input: '#1f1e1b',
-    userMsg: '#252320',
+    bubble: '#252320',
     elevated: '#252320',
   },
 
@@ -119,3 +119,4 @@ export const darkColors: ThemeColors = {
   overlay: 'rgba(0,0,0,0.6)',
   divider: '#2C2C2E',
 };
+import { colors as designColors } from './tokens';

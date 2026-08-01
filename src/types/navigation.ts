@@ -1,7 +1,14 @@
 export type RootStackParamList = {
   SessionList: undefined;
   Chat: { sessionId: string; title: string };
-  HostConfig: undefined;
+  HostConfig:
+    | {
+        version?: string;
+        host?: string;
+        challenge?: string;
+        code?: string;
+      }
+    | undefined;
   Settings: undefined;
 };
 

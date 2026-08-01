@@ -1,10 +1,17 @@
 # Mira Mobile 文档
 
-## 工程交接
+## 当前工程主线
+
+- [Tailscale Connectivity V1 合同](remote-access/tailscale-connectivity-v1.md)
+- [Tailscale 联通工程进度](remote-access/tailscale-connectivity-progress.md)
+
+当前由 `feature/tomz-tailscale` 接管 Mira Mobile 与 Mira Desktop Host 的 Tailscale 联通、生命周期恢复、深链配对和设备授权。主链代码已经落地，但尚未完成本地构建、自动化测试和 Android / iOS 真机验收。
+
+## 历史工程交接
 
 - [Trae 交接：接入 Mira Desktop Host V1](remote-access/trae-host-v1-handoff.md)
 
-该交接文档记录当前移动端 Mock 真相、桌面 Host V1 协议来源、配对与设备凭证、安全存储、Thread / Message、POST SSE Chat、Agent 审批、重连边界、施工顺序和验收标准，并附带可直接交给 Trae 的完整提示词。
+该文档保留为 Host V1 应用协议与早期施工输入。当前实际施工不再交给 Trae，进度与剩余任务以“Tailscale 联通工程进度”为准。
 
 ## 设计体系
 

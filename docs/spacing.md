@@ -7,10 +7,9 @@
 | mira-xs | 4px | 图标与文字间隙、紧凑内边距 |
 | mira-sm | 8px | 列表项内小间隙、按钮内边距 |
 | mira-md | 12px | 标准组件间隙 |
-| mira-lg | 14px | 输入框内边距 |
-| mira-xl | 16px | 列表项水平内边距 |
-| mira-2xl | 20px | 卡片内边距、表单间距 |
-| mira-3xl | 24px | 页面边缘间距、大模块间距 |
+| mira-lg | 16px | 页面边缘与消息间距 |
+| mira-xl | 24px | 大模块间距 |
+| mira-section | 32px | 页面分区间距 |
 
 ## 布局规范
 
@@ -45,6 +44,6 @@
 ```ts
 import { spacing } from './src/theme/tokens';
 
-// spacing.xl === 16
-// spacing['2xl'] === 20
+// spacing.lg === 16
+// spacing.xl === 24
 ```

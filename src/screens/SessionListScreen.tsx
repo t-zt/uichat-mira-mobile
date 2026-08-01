@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
   FlatList,
   Modal,
@@ -9,19 +9,22 @@ import {
   View,
   Animated,
   Dimensions,
+  PanResponder,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Menu, Plus, Settings as SettingsIcon } from 'lucide-react-native';
+import { Menu, MessageSquare, Pin, Plus, Settings as SettingsIcon, Trash2 } from 'lucide-react-native';
 import type { RootStackParamList } from '../types/navigation';
 import type { Session } from '../types';
 import { useHostStore } from '../store/hostStore';
 import { miraHostClient } from '../api/mockMiraHost';
 import { useTheme } from '../theme/ThemeContext';
+import { fontSize, radius, shadows, sizing, spacing } from '../theme/tokens';
 import { CustomDrawer } from '../components/CustomDrawer';
 
 const DRAWER_WIDTH = Math.floor(Dimensions.get('window').width * 0.82);
+const SWIPE_ACTION_WIDTH = 80;
 
 function formatTime(date: Date): string {
   const now = new Date();
@@ -45,6 +48,122 @@ function getStatusColor(status: string, colors: ReturnType<typeof useTheme>['col
     default:
       return colors.text.soft;
   }
+}
+
+interface SessionRowProps {
+  item: Session;
+  connectionStatus: string;
+  showUnreadIndicator: boolean;
+  showPinnedIndicator: boolean;
+  colors: ReturnType<typeof useTheme>['colors'];
+  onOpen: () => void;
+  onLongPress: () => void;
+  onDelete: () => void;
+}
+
+function SessionRow({ item, connectionStatus, showUnreadIndicator, showPinnedIndicator, colors, onOpen, onLongPress, onDelete }: SessionRowProps) {
+  const translateX = useRef(new Animated.Value(0)).current;
+  const isOpen = useRef(false);
+  const dragStart = useRef(0);
+  const [isSwipeOpen, setIsSwipeOpen] = useState(false);
+
+  const animateTo = useCallback((open: boolean) => {
+    isOpen.current = open;
+    setIsSwipeOpen(open);
+    Animated.timing(translateX, {
+      toValue: open ? -SWIPE_ACTION_WIDTH : 0,
+      duration: 180,
+      useNativeDriver: true,
+    }).start();
+  }, [translateX]);
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponderCapture: (_, gesture) => {
+          const isHorizontalSwipe = Math.abs(gesture.dx) > spacing.sm && Math.abs(gesture.dx) > Math.abs(gesture.dy);
+          return isHorizontalSwipe && (gesture.dx < 0 || isOpen.current);
+        },
+        onPanResponderGrant: () => {
+          dragStart.current = isOpen.current ? -SWIPE_ACTION_WIDTH : 0;
+          translateX.stopAnimation();
+        },
+        onPanResponderMove: (_, gesture) => {
+          const next = dragStart.current + gesture.dx;
+          translateX.setValue(Math.max(-SWIPE_ACTION_WIDTH, Math.min(0, next)));
+        },
+        onPanResponderRelease: (_, gesture) => {
+          const position = dragStart.current + gesture.dx;
+          animateTo(position < -SWIPE_ACTION_WIDTH / 2 || gesture.vx < -0.5);
+        },
+        onPanResponderTerminate: () => animateTo(false),
+      }),
+    [animateTo, translateX],
+  );
+  const animatedStyle = useMemo(() => ({ transform: [{ translateX }] }), [translateX]);
+
+  const handlePress = () => {
+    if (isOpen.current) {
+      animateTo(false);
+      return;
+    }
+    onOpen();
+  };
+
+  const handleDelete = () => {
+    animateTo(false);
+    onDelete();
+  };
+
+  return (
+    <View style={styles.swipeRow}>
+      <View style={[styles.deleteAction, { backgroundColor: colors.status.error }]}>
+        <Trash2 size={20} color={colors.onPrimary} />
+        <Text style={[styles.deleteActionText, { color: colors.onPrimary }]}>删除</Text>
+      </View>
+      <Animated.View style={animatedStyle} {...panResponder.panHandlers}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.sessionItem,
+            { backgroundColor: colors.bg.canvas, borderColor: colors.border.soft },
+            pressed && { backgroundColor: colors.bg.soft },
+          ]}
+          onPress={handlePress}
+          onLongPress={onLongPress}
+        >
+          <View style={[styles.avatar, { backgroundColor: colors.bg.card, borderColor: colors.border.default }]}>
+            <MessageSquare size={22} strokeWidth={1.7} color={colors.primary} />
+          </View>
+          <View style={styles.sessionContent}>
+            <View style={styles.sessionTopRow}>
+              <View style={styles.sessionTitleGroup}>
+                {showUnreadIndicator && <View style={[styles.unreadDot, { backgroundColor: colors.primary }]} />}
+                <Text style={[styles.sessionTitle, { color: colors.text.ink }]} numberOfLines={1}>
+                  {item.title}
+                </Text>
+                {showPinnedIndicator && <Pin size={14} strokeWidth={1.7} color={colors.text.soft} />}
+              </View>
+              <Text style={[styles.sessionTime, { color: colors.text.soft }]}>{formatTime(item.updatedAt)}</Text>
+            </View>
+            <Text style={[styles.sessionPreview, { color: colors.text.muted }]} numberOfLines={1}>
+              {connectionStatus === 'connected' ? '继续与 Mira 对话' : '连接 Mira Host 后继续对话'}
+            </Text>
+          </View>
+        </Pressable>
+      </Animated.View>
+      {isSwipeOpen && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`删除会话 ${item.title}`}
+          style={[styles.deleteAction, styles.deleteActionForeground, { backgroundColor: colors.status.error }]}
+          onPress={handleDelete}
+        >
+          <Trash2 size={20} color={colors.onPrimary} />
+          <Text style={[styles.deleteActionText, { color: colors.onPrimary }]}>删除</Text>
+        </Pressable>
+      )}
+    </View>
+  );
 }
 
 export function SessionListScreen() {
@@ -154,8 +273,7 @@ export function SessionListScreen() {
           onPress={openDrawer}
           style={({ pressed }) => [
             styles.drawerBtn,
-            { backgroundColor: colors.bg.card },
-            pressed && { opacity: 0.7 },
+            pressed && { backgroundColor: colors.bg.soft },
           ]}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
@@ -169,8 +287,7 @@ export function SessionListScreen() {
           onPress={() => navigation.navigate('Settings')}
           style={({ pressed }) => [
             styles.settingsBtn,
-            { backgroundColor: colors.bg.card },
-            pressed && { opacity: 0.7 },
+            pressed && { backgroundColor: colors.bg.soft },
           ]}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
@@ -197,41 +314,32 @@ export function SessionListScreen() {
           sessions.length === 0 && { flexGrow: 1 },
           { paddingBottom: insets.bottom + 100 },
         ]}
-        renderItem={({ item }) => (
-          <Pressable
-            style={({ pressed }) => [
-              styles.sessionItem,
-              pressed && { backgroundColor: colors.bg.soft, borderRadius: 12 },
-            ]}
-            onPress={() => navigation.navigate('Chat', { sessionId: item.id, title: item.title })}
-            onLongPress={() => setMenuSession(item)}
-          >
-            <View style={[styles.avatar, { backgroundColor: colors.bg.card }]}>
-              <Text style={[styles.avatarText, { color: colors.primary }]}>
-                {item.title[0] ?? '?'}
-              </Text>
-            </View>
-            <View style={styles.sessionContent}>
-              <View style={styles.sessionTopRow}>
-                <Text style={[styles.sessionTitle, { color: colors.text.ink }]} numberOfLines={1}>
-                  {item.title}
-                </Text>
-                <Text style={[styles.sessionTime, { color: colors.text.soft }]}>
-                  {formatTime(item.updatedAt)}
-                </Text>
-              </View>
-              <Text style={[styles.sessionPreview, { color: colors.text.muted }]} numberOfLines={1}>
-                {connectionStatus === 'connected' ? '点击开始聊天...' : '未连接主机'}
-              </Text>
-            </View>
-          </Pressable>
-        )}
-        ItemSeparatorComponent={() => (
-          <View style={[styles.separator, { backgroundColor: colors.border.soft }]} />
+        ListHeaderComponent={
+          sessions.length > 0 ? (
+            <Text style={[styles.sectionLabel, { color: colors.text.soft }]}>置顶</Text>
+          ) : null
+        }
+        renderItem={({ item, index }) => (
+          <>
+            {index === 1 && <Text style={[styles.recentSectionLabel, { color: colors.text.soft }]}>最近对话</Text>}
+            <SessionRow
+              item={item}
+              connectionStatus={connectionStatus}
+              showUnreadIndicator={index === 0}
+              showPinnedIndicator={index === 0}
+              colors={colors}
+              onOpen={() => navigation.navigate('Chat', { sessionId: item.id, title: item.title })}
+              onLongPress={() => setMenuSession(item)}
+              onDelete={() => setDeleteTarget(item)}
+            />
+          </>
         )}
         ListEmptyComponent={() => (
           <View style={styles.emptyState}>
-            <Text style={[styles.emptyTitle, { color: colors.text.muted }]}>暂无会话</Text>
+            <View style={[styles.emptyIllustration, { backgroundColor: colors.bg.card, borderColor: colors.border.default }]}>
+              <MessageSquare size={48} strokeWidth={1.25} color={colors.border.default} />
+            </View>
+            <Text style={[styles.emptyTitle, { color: colors.text.ink }]}>暂无会话</Text>
             <Text style={[styles.emptySubtitle, { color: colors.text.soft }]}>
               点击下方按钮开始新对话
             </Text>
@@ -248,7 +356,7 @@ export function SessionListScreen() {
         onPress={handleNewChat}
         disabled={isCreating}
       >
-        <Plus size={24} color="#fff" strokeWidth={2.5} />
+        <Plus size={24} color={colors.onPrimary} strokeWidth={2.5} />
       </Pressable>
 
       {/* ── Drawer Overlay ──────────────────── */}
@@ -372,13 +480,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
   },
   drawerBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: sizing.buttonHeight,
+    height: sizing.buttonHeight,
+    borderRadius: radius.sm,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -388,56 +496,89 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  statusDot: { width: 8, height: 8, borderRadius: 4, marginLeft: 6 },
-  headerTitle: { fontSize: 17, fontWeight: '600' },
+  statusDot: { width: spacing.sm, height: spacing.sm, borderRadius: radius.full, marginLeft: spacing.sm },
+  headerTitle: { fontSize: fontSize.titleLg, fontWeight: '600' },
   settingsBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: sizing.buttonHeight,
+    height: sizing.buttonHeight,
+    borderRadius: radius.sm,
     justifyContent: 'center',
     alignItems: 'center',
   },
   noConfigBanner: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginHorizontal: 16,
-    borderRadius: 10,
-    marginBottom: 4,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    marginHorizontal: spacing.lg,
+    borderRadius: radius.sm,
+    marginBottom: spacing.xs,
   },
-  noConfigText: { fontSize: 14, textAlign: 'center' },
-  listContent: { paddingHorizontal: 16 },
-  sessionItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12 },
+  noConfigText: { fontSize: fontSize.button, textAlign: 'center' },
+  listContent: { paddingHorizontal: spacing.lg },
+  sectionLabel: { paddingTop: spacing.lg, paddingBottom: spacing.sm, paddingHorizontal: spacing.xs, fontSize: fontSize.captionUppercase },
+  recentSectionLabel: { paddingTop: spacing.xl, paddingBottom: spacing.sm, paddingHorizontal: spacing.xs, fontSize: fontSize.captionUppercase },
+  swipeRow: { position: 'relative', overflow: 'hidden' },
+  deleteAction: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: SWIPE_ACTION_WIDTH,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
+  deleteActionForeground: { zIndex: 2, elevation: 1 },
+  deleteActionText: { fontSize: fontSize.xs, fontWeight: '600' },
+  sessionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 72,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: 48,
+    height: 48,
+    borderRadius: radius.sm,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: spacing.md,
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  avatarText: { fontSize: 18, fontWeight: '600' },
-  sessionContent: { flex: 1 },
+  sessionContent: { flex: 1, minWidth: 0 },
   sessionTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: spacing.xs,
   },
-  sessionTitle: { fontSize: 16, fontWeight: '600', flex: 1, marginRight: 8 },
-  sessionTime: { fontSize: 12 },
-  sessionPreview: { fontSize: 14 },
-  separator: { height: StyleSheet.hairlineWidth, marginLeft: 56 },
-  emptyState: { alignItems: 'center', paddingVertical: 80 },
-  emptyTitle: { fontSize: 18, fontWeight: '600', marginBottom: 8 },
-  emptySubtitle: { fontSize: 14 },
+  sessionTitleGroup: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', marginRight: spacing.sm },
+  unreadDot: { width: spacing.sm, height: spacing.sm, borderRadius: radius.full, marginRight: spacing.sm },
+  sessionTitle: { fontSize: fontSize.bodyMd, fontWeight: '600', flex: 1 },
+  sessionTime: { fontSize: fontSize.xs },
+  sessionPreview: { fontSize: fontSize.button },
+  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.section, paddingBottom: 80 },
+  emptyIllustration: {
+    width: 112,
+    height: 112,
+    borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
+  },
+  emptyTitle: { fontSize: fontSize.titleLg, fontWeight: '600', marginBottom: spacing.sm },
+  emptySubtitle: { fontSize: fontSize.button, textAlign: 'center' },
   fab: {
     position: 'absolute',
-    right: 20,
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    right: spacing.xl,
+    width: 56,
+    height: 56,
+    borderRadius: radius.full,
     justifyContent: 'center',
     alignItems: 'center',
+    ...shadows.fab,
   },
   // ── Drawer ────────────────────────────
   drawerBackdrop: { ...StyleSheet.absoluteFill },

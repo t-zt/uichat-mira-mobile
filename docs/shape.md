@@ -6,20 +6,20 @@
 |-------|---|------|
 | mira-sm | 8px | 小按钮、头像 |
 | mira-md | 12px | 输入框、卡片 |
-| mira-lg | 14px | 大按钮 |
-| mira-xl | 16px | 卡片容器、页面模块 |
-| mira-full | 20px | 圆形按钮、发送按钮、输入框 |
+| mira-lg | 16px | 卡片容器、页面模块 |
+| mira-xl | 20px | 大型容器 |
+| mira-full | 9999px | 胶囊和圆形按钮 |
 
 ## 阴影规范
 
 ### FAB 阴影
 ```ts
 {
-  shadowColor: '#6366f1',
-  shadowOffset: { width: 0, height: 4 },
-  shadowOpacity: 0.3,
-  shadowRadius: 8,
-  elevation: 6,
+  shadowColor: '#c96442',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.15,
+  shadowRadius: 6,
+  elevation: 3,
 }
 ```
 
@@ -36,8 +36,8 @@
 
 ## 聊天气泡形状
 
-- **用户气泡**：圆角 16px，右下角切平（`borderBottomRightRadius: 4px`）
-- **AI 气泡**：圆角 16px，左下角切平（`borderBottomLeftRadius: 4px`）
+- **用户气泡**：圆角 18px，右下角收紧为 6px
+- **AI 消息**：透明背景，不使用气泡边框
 
 ## Tailwind 使用
 

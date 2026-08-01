@@ -10,7 +10,7 @@
 
 // ─── Brand & Text ──────────────────────────────────────────
 export const colors = {
-  /** 唯一品牌强调色 — 按钮 / CTA */
+  /** 唯一品牌强调色 — 按钮 / CTA / 徽标 */
   primary: '#cc785c',
   /** 按钮按下态 */
   primaryActive: '#a9583e',
@@ -29,25 +29,30 @@ export const colors = {
     muted: '#6c6a64',
     /** 占位符 / 三级文字 */
     soft: '#8e8b82',
+    /** deprecated alias — maps to muted */
     secondary: '#6c6a64',
+    /** deprecated alias — maps to soft */
     tertiary: '#8e8b82',
     placeholder: '#8e8b82',
   },
 
   // ─── Surfaces ──────────────────────────────────────────
   bg: {
-    /** 页面主底色 */
+    /** 页面主底色 — 暖调米白 */
     canvas: '#faf9f5',
+    /** alias for canvas (backwards compat) */
     base: '#faf9f5',
-    /** 用户消息底色 */
-    userMsg: '#f0eeeb',
-    /** 分区底色 */
+    /** 轻微区隔的分区底色 */
     soft: '#f5f0e8',
-    /** 卡片背景 */
+    /** 卡片背景（比画布更深一级） */
     card: '#efe9de',
+    /** 强调型米色区块 */
     creamStrong: '#e8e0d2',
     /** 输入框底色 */
     input: '#f5f0e8',
+    /** 用户消息底色 */
+    bubble: '#efe9de',
+    /** deprecated alias */
     subtle: '#f5f0e8',
   },
 
@@ -67,16 +72,16 @@ export const colors = {
   },
 
   /** 珊瑚色按钮上的文字 */
-  onPrimary: '#ffffff',
+  onPrimary: '#faf9f5',
 
   // ─── Borders ────────────────────────────────────────────
   border: {
     /** 卡片细边框 */
-    default: '#e6dfd8',
+    default: '#e8e6dc',
     /** 更轻的分隔线 */
-    soft: '#ebe6df',
+    soft: '#f0eee6',
     /** deprecated alias */
-    light: '#ebe6df',
+    light: '#f0eee6',
   },
 
   // ─── Accents & Status ───────────────────────────────────
@@ -99,21 +104,21 @@ export const colors = {
   },
 
   // ─── Deprecated aliases (backwards compat) ─────────────
-  primaryDark: '#a9583e',
+  primaryDark: '#a95034',
   success: '#5db872',
   warning: '#d4a017',
   danger: '#c64545',
   dangerLight: '#e8a55a',
-  muted: '#6c6a64',
+  muted: '#5e5d59',
 
   hint: {
-    bg: '#f5f0e8',
-    text: '#a9583e',
+    bg: '#e8e6dc',
+    text: '#a95034',
   },
 
   banner: {
-    bg: '#e8e0d2',
-    text: '#6c6a64',
+    bg: '#e8e6dc',
+    text: '#5e5d59',
   },
 } as const;
 
@@ -221,7 +226,7 @@ export const sizing = {
   /** 按钮统一高度 */
   buttonHeight: 40,
   /** 圆形图标按钮 */
-  iconButton: 36,
+  iconButton: 44,
   /** 最小触控区域 */
   touchTarget: 44,
 } as const;
@@ -233,10 +238,17 @@ export const sizing = {
 export const shadows = {
   // FAB 保留极轻阴影作为浮动元素的最小深度提示
   fab: {
-    shadowColor: '#cc785c',
+    shadowColor: '#c96442',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 6,
     elevation: 3,
+  },
+  composer: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 2,
   },
 } as const;
