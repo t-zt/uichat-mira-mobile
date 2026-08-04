@@ -34,10 +34,10 @@ react {
     // bundleConfig = file(../rn-cli.config.js)
     //
     //   The name of the generated asset file
-    // bundleAssetName = "MyApplication.android.bundle"
+    // bundleAssetName = "UIChatMira.android.bundle"
     //
     //   The entry file for bundle generation. Default is 'index.android.js' or 'index.js'
-    // entryFile = file("../js/MyApplication.android.js")
+    // entryFile = file("../js/UIChatMira.android.js")
     //
     //   A list of extra flags to pass to the 'bundle' commands.
     //   See https://github.com/react-native-community/cli/blob/main/docs/commands.md#bundle
@@ -63,6 +63,13 @@ def enableProguardInReleaseBuilds = false
  * The preferred build flavor of JavaScriptCore (JSC).
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
+
+def packageJsonFile = rootProject.file('../package.json')
+def packageMetadata = new groovy.json.JsonSlurper().parseText(packageJsonFile.getText('UTF-8'))
+if (!(packageMetadata.version instanceof String) || packageMetadata.version.trim().isEmpty()) {
+    throw new GradleException('package.json must define a non-empty version string.')
+}
+def packageVersion = packageMetadata.version
 
 def releaseSigningValues = [
     MIRA_RELEASE_STORE_FILE: project.findProperty('MIRA_RELEASE_STORE_FILE') ?: System.getenv('MIRA_RELEASE_STORE_FILE'),
@@ -90,13 +97,13 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace "com.myapp"
+    namespace "io.tomz.mira.mobile"
     defaultConfig {
-        applicationId "com.myapp"
+        applicationId "io.tomz.mira.mobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
-        versionName "1.0"
+        versionName packageVersion
     }
 
     signingConfigs {

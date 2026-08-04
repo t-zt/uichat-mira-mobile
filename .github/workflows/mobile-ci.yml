@@ -108,8 +108,8 @@ jobs:
     needs:
       - quality
     if: >-
-      (github.event_name == 'push' && github.ref == 'refs/heads/prod') ||
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/prod')
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/prod')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -159,7 +159,13 @@ jobs:
         run: |
           chmod +x android/gradlew
           cd android
-          ./gradlew assembleRelease --no-daemon --stacktrace
+          ./gradlew \
+            -Dorg.gradle.jvmargs="-Xmx2048m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8" \
+            assembleRelease \
+            --no-daemon \
+            --no-parallel \
+            --max-workers=1 \
+            --stacktrace
 
       - name: Verify release APK
         run: |
@@ -187,7 +193,7 @@ jobs:
           retention-days: 30
 
   ios:
-    name: iOS simulator build
+    name: iOS simulator and unsigned device builds
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -216,17 +222,24 @@ jobs:
         run: xcodebuild -version
 
       - name: Build iOS simulator app
+        shell: bash
         run: |
+          set -euo pipefail
+
+          derived_data='ios/build/SimulatorDerivedData'
+          rm -rf "$derived_data"
+
           xcodebuild \
-            -workspace ios/MyApp.xcworkspace \
-            -scheme MyApp \
+            -workspace ios/UIChatMira.xcworkspace \
+            -scheme UIChatMira \
             -configuration Debug \
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath ios/build/DerivedData \
+            -derivedDataPath "$derived_data" \
             CODE_SIGNING_ALLOWED=NO \
             build
-          app_path=$(find ios/build/DerivedData/Build/Products -type d -name '*.app' | head -n 1)
+
+          app_path=$(find "$derived_data/Build/Products" -type d -name '*.app' -print -quit)
           test -n "$app_path"
           ditto -c -k --sequesterRsrc --keepParent "$app_path" ios/build/uichat-mira-mobile-ios-simulator.zip
 
@@ -238,11 +251,97 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Build unsigned iPhone app
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          derived_data='ios/build/UnsignedDeviceDerivedData'
+          rm -rf "$derived_data"
+
+          xcodebuild \
+            -workspace ios/UIChatMira.xcworkspace \
+            -scheme UIChatMira \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$derived_data" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            build
+
+      - name: Package and verify unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          derived_data='ios/build/UnsignedDeviceDerivedData'
+          products_dir="$derived_data/Build/Products/Release-iphoneos"
+          app_path=$(find "$products_dir" -maxdepth 1 -type d -name '*.app' -print -quit)
+
+          if [ -z "$app_path" ]; then
+            echo 'No Release-iphoneos .app bundle was produced.' >&2
+            exit 1
+          fi
+
+          test -f "$app_path/Info.plist"
+          test -f "$app_path/main.jsbundle"
+
+          executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app_path/Info.plist")
+          test -n "$executable"
+          test -f "$app_path/$executable"
+
+          archs=$(lipo -archs "$app_path/$executable")
+          echo "Device executable architectures: $archs"
+          printf '%s\n' "$archs" | tr ' ' '\n' | grep -Fxq arm64
+
+          package_dir='ios/build/unsigned-device-package'
+          ipa='ios/build/uichat-mira-mobile-ios-unsigned-device.ipa'
+          checksum="$ipa.sha256"
+
+          rm -rf "$package_dir" "$ipa" "$checksum"
+          mkdir -p "$package_dir/Payload"
+          ditto "$app_path" "$package_dir/Payload/$(basename "$app_path")"
+
+          (
+            cd "$package_dir"
+            ditto -c -k --sequesterRsrc --keepParent Payload "../$(basename "$ipa")"
+          )
+
+          unzip -tq "$ipa"
+          entries="$RUNNER_TEMP/ios-unsigned-device-entries.txt"
+          unzip -Z1 "$ipa" > "$entries"
+          grep -Eq '^Payload/[^/]+\.app/Info\.plist$' "$entries"
+          grep -Eq '^Payload/[^/]+\.app/main\.jsbundle$' "$entries"
+
+          if grep -Eq '^Payload/[^/]+\.app/embedded\.mobileprovision$' "$entries"; then
+            echo 'Unsigned IPA unexpectedly contains an embedded provisioning profile.' >&2
+            exit 1
+          fi
+
+          (
+            cd "$(dirname "$ipa")"
+            shasum -a 256 "$(basename "$ipa")" > "$(basename "$checksum")"
+          )
+
+      - name: Upload unsigned device IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: uichat-mira-mobile-ios-unsigned-device
+          path: |
+            ios/build/uichat-mira-mobile-ios-unsigned-device.ipa
+            ios/build/uichat-mira-mobile-ios-unsigned-device.ipa.sha256
+          if-no-files-found: error
+          retention-days: 14
+
   publish-dev-release:
     name: Publish dev prerelease
     needs:
       - quality
       - android
+      - android-release
       - ios
     if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
@@ -254,16 +353,56 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Resolve package version
+        run: |
+          package_version=$(node -p "require('./package.json').version")
+          test -n "$package_version"
+          echo "PACKAGE_VERSION=$package_version" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=v${package_version}-dev" >> "$GITHUB_ENV"
+
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           path: release-assets
           merge-multiple: true
 
-      - name: Generate checksums
+      - name: Verify dev release asset set
+        shell: bash
         run: |
+          set -euo pipefail
+
+          required=(
+            uichat-mira-mobile-dev.apk
+            uichat-mira-mobile-release.apk
+            uichat-mira-mobile-release.apk.sha256
+            uichat-mira-mobile-ios-simulator.zip
+            uichat-mira-mobile-ios-unsigned-device.ipa
+            uichat-mira-mobile-ios-unsigned-device.ipa.sha256
+          )
+
+          for name in "${required[@]}"; do
+            if [ ! -s "release-assets/$name" ]; then
+              echo "Required dev release asset is missing or empty: $name" >&2
+              exit 1
+            fi
+          done
+
+          (
+            cd release-assets
+            sha256sum -c uichat-mira-mobile-release.apk.sha256
+            sha256sum -c uichat-mira-mobile-ios-unsigned-device.ipa.sha256
+            unzip -tq uichat-mira-mobile-ios-simulator.zip
+            unzip -tq uichat-mira-mobile-ios-unsigned-device.ipa
+          )
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
           cd release-assets
-          sha256sum * > SHA256SUMS.txt
+          find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -printf '%f\0' \
+            | sort -z \
+            | xargs -0 sha256sum > SHA256SUMS.txt
 
       - name: Upload dev artifacts to Cloudflare R2
         env:
@@ -275,7 +414,10 @@ jobs:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        shell: bash
         run: |
+          set -euo pipefail
+
           for name in \
             AWS_ACCESS_KEY_ID \
             AWS_SECRET_ACCESS_KEY \
@@ -294,29 +436,53 @@ jobs:
 
           upload() {
             aws s3 sync release-assets/ "s3://${R2_BUCKET}/${latest_prefix}/" \
-              --delete \
               --endpoint-url "$endpoint" \
               --cache-control 'public, max-age=300, must-revalidate' \
               --only-show-errors
           }
 
+          verify_remote() {
+            while IFS= read -r -d '' file; do
+              filename=$(basename "$file")
+              key="${latest_prefix}/${filename}"
+              local_size=$(stat -c '%s' "$file")
+              remote_size=$(aws s3api head-object \
+                --bucket "$R2_BUCKET" \
+                --key "$key" \
+                --endpoint-url "$endpoint" \
+                --query ContentLength \
+                --output text)
+
+              if [ "$local_size" != "$remote_size" ]; then
+                echo "R2 verification failed for $key: local=$local_size remote=$remote_size" >&2
+                return 1
+              fi
+            done < <(find release-assets -maxdepth 1 -type f -print0)
+          }
+
+          published=false
           for attempt in 1 2 3; do
-            if upload; then
+            if upload && verify_remote; then
+              published=true
               break
             fi
 
-            if [ "$attempt" -eq 3 ]; then
-              echo "R2 upload failed after ${attempt} attempts." >&2
-              exit 1
+            echo "R2 upload or verification attempt ${attempt} failed." >&2
+            if [ "$attempt" -lt 3 ]; then
+              sleep $((attempt * 10))
             fi
-
-            sleep $((attempt * 10))
           done
+
+          if [ "$published" != true ]; then
+            echo 'R2 publication failed after 3 attempts; existing latest files were not deleted.' >&2
+            exit 1
+          fi
 
           public_base="${R2_PUBLIC_BASE_URL%/}"
           {
             echo "### Cloudflare R2"
             echo "Latest: ${public_base}/${latest_prefix}/"
+            echo "Unsigned iOS IPA: ${public_base}/${latest_prefix}/uichat-mira-mobile-ios-unsigned-device.ipa"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish rolling dev release
@@ -328,30 +494,32 @@ jobs:
           cat > release-notes.md <<EOF
           Automated development build from branch \`dev\`.
 
+          - Version: \`$PACKAGE_VERSION\`
           - Commit: \`$GITHUB_SHA\`
           - CI run: \`$GITHUB_RUN_ID\`
-          - Android: debug APK, installable for testing
-          - iOS: unsigned Simulator app archive, not an IPA
+          - Android: debug APK and signed release APK
+          - iOS Simulator: unsigned app archive
+          - iOS device: unsigned arm64 IPA for local Windows signing and sideloading
           - R2 mirror: \`${{ secrets.R2_PUBLIC_BASE_URL }}/mira/mobile/dev/latest/\`
           EOF
 
-          if gh release view dev-latest >/dev/null 2>&1; then
-            gh release edit dev-latest \
-              --title "Mira Mobile Dev $short_sha" \
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --title "Mira Mobile $PACKAGE_VERSION Dev $short_sha" \
               --notes-file release-notes.md \
               --prerelease
           else
-            gh release create dev-latest \
+            gh release create "$RELEASE_TAG" \
               --target "$GITHUB_SHA" \
-              --title "Mira Mobile Dev $short_sha" \
+              --title "Mira Mobile $PACKAGE_VERSION Dev $short_sha" \
               --notes-file release-notes.md \
               --prerelease
           fi
 
-          gh release upload dev-latest release-assets/* --clobber
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber
 
-          git tag -f dev-latest "$GITHUB_SHA"
-          git push origin refs/tags/dev-latest --force
+          git tag -f "$RELEASE_TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/$RELEASE_TAG" --force
 
   publish-prod-release:
     name: Publish production release
@@ -369,6 +537,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Resolve package version
+        run: |
+          package_version=$(node -p "require('./package.json').version")
+          test -n "$package_version"
+          echo "PACKAGE_VERSION=$package_version" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=v${package_version}" >> "$GITHUB_ENV"
 
       - name: Download signed Android release
         uses: actions/download-artifact@v4
@@ -441,11 +616,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          short_sha=${GITHUB_SHA::7}
-
           cat > release-notes.md <<EOF_NOTES
           Automated production build from branch \`prod\`.
 
+          - Version: \`$PACKAGE_VERSION\`
           - Commit: \`$GITHUB_SHA\`
           - CI run: \`$GITHUB_RUN_ID\`
           - Android: signed release APK
@@ -453,18 +627,21 @@ jobs:
           - R2 mirror: \`${{ secrets.R2_PUBLIC_BASE_URL }}/mira/mobile/prod/latest/\`
           EOF_NOTES
 
-          if gh release view prod-latest >/dev/null 2>&1; then
-            gh release edit prod-latest \
-              --title "Mira Mobile Prod $short_sha" \
+          remote_tag_sha=$(git ls-remote --tags origin "refs/tags/$RELEASE_TAG" | awk '{print $1}')
+          if [ -n "$remote_tag_sha" ] && [ "$remote_tag_sha" != "$GITHUB_SHA" ]; then
+            echo "Release tag $RELEASE_TAG already points to $remote_tag_sha; bump package.json before publishing another production commit." >&2
+            exit 1
+          fi
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --title "Mira Mobile $PACKAGE_VERSION" \
               --notes-file release-notes.md
           else
-            gh release create prod-latest \
+            gh release create "$RELEASE_TAG" \
               --target "$GITHUB_SHA" \
-              --title "Mira Mobile Prod $short_sha" \
+              --title "Mira Mobile $PACKAGE_VERSION" \
               --notes-file release-notes.md
           fi
 
-          gh release upload prod-latest release-assets/* --clobber
-
-          git tag -f prod-latest "$GITHUB_SHA"
-          git push origin refs/tags/prod-latest --force
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber

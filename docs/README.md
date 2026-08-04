@@ -1,5 +1,9 @@
 # Mira Mobile 文档
 
+## 工程与发布
+
+- [GitHub Actions 构建与发布](github-build-release.md)
+
 ## 当前工程主线
 
 - [Tailscale Connectivity V1 合同](remote-access/tailscale-connectivity-v1.md)
@@ -19,6 +23,7 @@
 
 ### 目录
 
+- [品牌规范](branding.md)
 - [设计原则](design-principles.md)
 - [颜色系统](colors.md)
 - [排版与字号](typography.md)
@@ -40,9 +45,9 @@
 
 ### 主色调
 
-**Primary**: `#6366f1` (Indigo)
+**Primary**: `#c96442` (Coral clay)
 
-用于：主按钮、FAB、返回按钮、状态指示器、强调元素
+用于：主按钮、发送按钮、选中状态和少量品牌强调
 
 **Success**: `#22c55e`  
 **Warning**: `#f59e0b`  

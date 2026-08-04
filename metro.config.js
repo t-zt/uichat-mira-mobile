@@ -6,6 +6,9 @@ const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
  *
  * @type {import('@react-native/metro-config').MetroConfig}
  */
-const config = {};
+const config = {
+  // Keep release bundling stable on Windows when transforming large ESM dependencies.
+  maxWorkers: 1,
+};
 
 module.exports = mergeConfig(getDefaultConfig(__dirname), config);

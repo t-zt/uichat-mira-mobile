@@ -69,8 +69,8 @@ Android 已增加原生分层探针，避免 React Native `fetch` 将 DNS、TLS 
 
 - `src/connectivity/tailscaleConnectivity.ts`
 - `src/connectivity/nativeTailscaleProbe.ts`
-- `android/app/src/main/java/com/myapp/MiraTailscaleProbeModule.kt`
-- `android/app/src/main/java/com/myapp/MiraHostIdentityParser.kt`
+- `android/app/src/main/java/io/tomz/mira/mobile/MiraTailscaleProbeModule.kt`
+- `android/app/src/main/java/io/tomz/mira/mobile/MiraHostIdentityParser.kt`
 
 ### 2.2 生命周期与网络恢复
 
@@ -87,7 +87,7 @@ Android 原生网络监听会合并短时间内连续回调，再触发一次实
 
 - `src/connectivity/TailscaleConnectivityLifecycle.tsx`
 - `src/connectivity/systemNetworkMonitor.ts`
-- `android/app/src/main/java/com/myapp/MiraNetworkMonitorModule.kt`
+- `android/app/src/main/java/io/tomz/mira/mobile/MiraNetworkMonitorModule.kt`
 
 ### 2.3 `mira://pair` 深链
 
@@ -105,8 +105,8 @@ Android 与 iOS 已注册 `mira://pair`。
 
 - `App.tsx`
 - `android/app/src/main/AndroidManifest.xml`
-- `ios/MyApp/Info.plist`
-- `ios/MyApp/AppDelegate.swift`
+- `ios/UIChatMira/Info.plist`
+- `ios/UIChatMira/AppDelegate.swift`
 
 ### 2.4 HostConfig 状态拆分
 
@@ -169,8 +169,8 @@ Android 已实现：
 
 主要代码：
 
-- `android/app/src/main/java/com/myapp/MiraSecureCredentialStoreModule.kt`
-- `android/app/src/main/java/com/myapp/MiraSecureCredentialStorePackage.kt`
+- `android/app/src/main/java/io/tomz/mira/mobile/MiraSecureCredentialStoreModule.kt`
+- `android/app/src/main/java/io/tomz/mira/mobile/MiraSecureCredentialStorePackage.kt`
 
 ### 2.7 Host V1 应用层准备
 

@@ -1,4 +1,4 @@
-# uiChat Mira Mobile
+# UIChat Mira Mobile
 
 Mira 官方移动端工程，基于 React Native 构建。
 
@@ -93,7 +93,7 @@ MIRA_RELEASE_KEY_ALIAS
 MIRA_RELEASE_KEY_PASSWORD
 ```
 
-`MIRA_RELEASE_KEYSTORE_BASE64` 是 release keystore 的单行 Base64 内容。`prod` 分支推送或手动运行
+`MIRA_RELEASE_KEYSTORE_BASE64` 是 release keystore 的单行 Base64 内容。`dev` 或 `prod` 分支推送，或在这两个分支手动运行
 `Mobile CI` 时，工作流会构建签名 APK，验证内置 JavaScript bundle、SVG 原生库和 APK 签名，并上传
 `uichat-mira-mobile-android-release` artifact。
 
@@ -105,16 +105,42 @@ MIRA_RELEASE_KEY_PASSWORD
 keytool -genkeypair -v -keystore release.keystore -alias <alias> -keyalg RSA -keysize 2048 -validity 10000
 ```
 
+## iOS 免费真机侧载
+
+主工作流 `.github/workflows/mobile-ci.yml` 会在同一个 macOS Job 中构建：
+
+- 无签名 iOS Simulator Debug 压缩包。
+- 面向 `iphoneos` / `arm64` 的无签名 Release IPA。
+
+没有 Mac、没有付费 Apple Developer Program 的开发者，可以在 Windows 上使用自己的免费 Apple Account，通过 Sideloadly 临时签名并安装到 iPhone。
+
+该方式仅用于开发测试，免费签名有效期为 7 天，不属于正式分发。CI 构建和 IPA 结构已经验证通过；真实 iPhone 的侧载、启动和功能表现仍需真机验证。
+
+完整准备、安装、续签和排错步骤见：
+
+[docs/ios-free-sideload-windows.md](./docs/ios-free-sideload-windows.md)
+
 ## 持续集成
 
-`.github/workflows/mobile-ci.yml` 在 Pull Request 和目标分支推送时执行：
+`.github/workflows/mobile-ci.yml` 在 Pull Request 和目标分支推送时执行。
+
+完整的 Job 依赖、版本 Tag、签名、R2 地址和已知技术债见 [GitHub Actions 构建与发布](docs/github-build-release.md)。
 
 - TypeScript 类型检查、ESLint 和 Jest。
 - Android `assembleDebug` 干净环境构建。
-- iOS CocoaPods 安装与无签名 Simulator Debug 构建。
-- `dev` 推送通过全部检查后，更新 `dev-latest` 预发布，并同步到 Cloudflare R2 的 `mira/mobile/dev/latest/`。
+- iOS CocoaPods 安装、Simulator Debug 构建及 unsigned device Release IPA 构建。
+- `dev` 推送通过全部检查及签名 Release 构建后，按 `package.json` 的版本更新 `v<version>-dev` 预发布，并同步到 Cloudflare R2 的 `mira/mobile/dev/latest/`。
+- `prod` 推送通过发布检查后，按 `package.json` 的版本创建不可改指向的 `v<version>` 正式 Tag；同一版本不得发布不同提交。
 
-当前 `dev` 产物包括可安装的 Android Debug APK、iOS Simulator ZIP 和 SHA-256 校验文件。它们是开发测试产物，不是正式签名发行包。
+当前 `dev` Release 与 R2 产物包括：
+
+- Android Debug APK。
+- 使用正式 keystore 签名的 Android Release APK。
+- iOS Simulator ZIP。
+- iOS unsigned device IPA 及其 SHA-256。
+- 汇总校验文件 `SHA256SUMS.txt`。
+
+unsigned device IPA 不能直接安装，必须由安装者在 Windows 本地完成临时签名。正式发布仍由 `prod` 分支执行。
 
 ## 说明
 

@@ -10,6 +10,11 @@ export type RootStackParamList = {
       }
     | undefined;
   Settings: undefined;
+  Search: undefined;
+  Personalization: undefined;
+  ReportError: undefined;
+  About: undefined;
+  License: undefined;
 };
 
 export type DrawerParamList = {

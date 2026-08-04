@@ -30,6 +30,14 @@ describe('remoteHostV1 protocol', () => {
     ).toBe('http://127.0.0.1:8787');
   });
 
+  it('rejects pairing hosts that only resemble the pair endpoint', () => {
+    expect(() =>
+      parsePairingUri(
+        'mira://pair.evil?host=https%3A%2F%2Fmira.example.ts.net&challenge=challenge-1&code=ABCD2345&version=1',
+      ),
+    ).toThrow('Pairing link must start with mira://pair');
+  });
+
   it('validates the manifest reconnect and scope contract', () => {
     expect(
       parseRemoteManifest({

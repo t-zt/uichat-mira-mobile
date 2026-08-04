@@ -14,13 +14,13 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Menu, MessageSquare, Pin, Plus, Settings as SettingsIcon, Trash2 } from 'lucide-react-native';
+import { Menu, MessageSquare, Pin, Settings as SettingsIcon, Trash2 } from 'lucide-react-native';
 import type { RootStackParamList } from '../types/navigation';
 import type { Session } from '../types';
 import { useHostStore } from '../store/hostStore';
 import { miraHostClient } from '../api/mockMiraHost';
 import { useTheme } from '../theme/ThemeContext';
-import { fontSize, radius, shadows, sizing, spacing } from '../theme/tokens';
+import { fontSize, radius, sizing, spacing } from '../theme/tokens';
 import { CustomDrawer } from '../components/CustomDrawer';
 
 const DRAWER_WIDTH = Math.floor(Dimensions.get('window').width * 0.82);
@@ -169,10 +169,9 @@ function SessionRow({ item, connectionStatus, showUnreadIndicator, showPinnedInd
 export function SessionListScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { colors } = useTheme();
-  const { config, connectionStatus } = useHostStore();
+  const { connectionStatus } = useHostStore();
   const insets = useSafeAreaInsets();
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [isCreating, setIsCreating] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const drawerAnim = useState(new Animated.Value(-DRAWER_WIDTH))[0];
   const backdropAnim = useState(new Animated.Value(0))[0];
@@ -225,18 +224,6 @@ export function SessionListScreen() {
       loadSessions();
     }, [loadSessions]),
   );
-
-  const handleNewChat = async () => {
-    if (isCreating) return;
-    setIsCreating(true);
-    try {
-      const session = await miraHostClient.createSession('新对话');
-      setSessions((prev) => [session, ...prev]);
-      navigation.navigate('Chat', { sessionId: session.id, title: session.title });
-    } finally {
-      setIsCreating(false);
-    }
-  };
 
   const handleStartRename = () => {
     if (!menuSession) return;
@@ -295,17 +282,6 @@ export function SessionListScreen() {
         </Pressable>
       </View>
 
-      {!config && (
-        <Pressable
-          style={[styles.noConfigBanner, { backgroundColor: colors.bg.card }]}
-          onPress={() => navigation.navigate('HostConfig')}
-        >
-          <Text style={[styles.noConfigText, { color: colors.text.muted }]}>
-            尚未配置 Mira Host，点击配置
-          </Text>
-        </Pressable>
-      )}
-
       <FlatList
         data={sessions}
         keyExtractor={(item) => item.id}
@@ -346,18 +322,6 @@ export function SessionListScreen() {
           </View>
         )}
       />
-
-      <Pressable
-        style={({ pressed }) => [
-          styles.fab,
-          { bottom: insets.bottom + 20, backgroundColor: colors.primary },
-          (isCreating || pressed) && { backgroundColor: colors.primaryDisabled },
-        ]}
-        onPress={handleNewChat}
-        disabled={isCreating}
-      >
-        <Plus size={24} color={colors.onPrimary} strokeWidth={2.5} />
-      </Pressable>
 
       {/* ── Drawer Overlay ──────────────────── */}
       {drawerOpen && (
@@ -505,14 +469,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  noConfigBanner: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    marginHorizontal: spacing.lg,
-    borderRadius: radius.sm,
-    marginBottom: spacing.xs,
-  },
-  noConfigText: { fontSize: fontSize.button, textAlign: 'center' },
   listContent: { paddingHorizontal: spacing.lg },
   sectionLabel: { paddingTop: spacing.lg, paddingBottom: spacing.sm, paddingHorizontal: spacing.xs, fontSize: fontSize.captionUppercase },
   recentSectionLabel: { paddingTop: spacing.xl, paddingBottom: spacing.sm, paddingHorizontal: spacing.xs, fontSize: fontSize.captionUppercase },
@@ -570,16 +526,6 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: fontSize.titleLg, fontWeight: '600', marginBottom: spacing.sm },
   emptySubtitle: { fontSize: fontSize.button, textAlign: 'center' },
-  fab: {
-    position: 'absolute',
-    right: spacing.xl,
-    width: 56,
-    height: 56,
-    borderRadius: radius.full,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...shadows.fab,
-  },
   // ── Drawer ────────────────────────────
   drawerBackdrop: { ...StyleSheet.absoluteFill },
   drawerPanel: {

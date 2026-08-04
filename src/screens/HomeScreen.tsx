@@ -11,7 +11,7 @@ export function HomeScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        <Text style={styles.title}>uiChat Mira Mobile</Text>
+        <Text style={styles.title}>UIChat Mira</Text>
         <Text style={styles.subtitle}>
           Connect to your Mira Host to start chatting
         </Text>

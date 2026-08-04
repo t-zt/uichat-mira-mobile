@@ -89,6 +89,11 @@ export class RemoteMiraHostClient {
     return this.credentialStore.isAvailable();
   }
 
+  async getStoredHostUrl(): Promise<string | null> {
+    const stored = await this.credentialStore.load();
+    return stored?.hostUrl ?? null;
+  }
+
   async claimPairingUri(
     pairingUri: string,
     identity: MobileDeviceIdentity,
@@ -146,27 +151,47 @@ export class RemoteMiraHostClient {
       );
     }
 
-    const manifest = await this.getManifestWithCredential(
-      pending.descriptor.hostUrl,
-      result.credential,
-    );
-    if (manifest.device.id !== result.deviceId) {
-      throw new RemoteHostError(
-        'DEVICE_ID_MISMATCH',
-        'Paired device identity does not match the Host manifest',
-      );
-    }
-
     const stored: StoredDeviceCredential = {
       hostUrl: pending.descriptor.hostUrl,
       credential: result.credential,
       deviceId: result.deviceId,
-      scopes: manifest.device.scopes,
+      scopes: result.scopes,
       savedAt: new Date().toISOString(),
     };
     await this.credentialStore.save(stored);
     this.activeCredential = stored;
-    return result;
+
+    try {
+      const manifest = await this.getManifestWithCredential(
+        pending.descriptor.hostUrl,
+        result.credential,
+      );
+      if (manifest.device.id !== result.deviceId) {
+        await this.credentialStore.clear();
+        this.activeCredential = null;
+        throw new RemoteHostError(
+          'DEVICE_ID_MISMATCH',
+          'Paired device identity does not match the Host manifest',
+        );
+      }
+
+      const verified: StoredDeviceCredential = {
+        ...stored,
+        scopes: manifest.device.scopes,
+      };
+      await this.credentialStore.save(verified);
+      this.activeCredential = verified;
+      return result;
+    } catch (error) {
+      if (
+        error instanceof RemoteHostError &&
+        (error.status === 401 || error.status === 403)
+      ) {
+        await this.credentialStore.clear();
+        this.activeCredential = null;
+      }
+      throw error;
+    }
   }
 
   async restoreConnection(): Promise<RestoredRemoteConnection | null> {

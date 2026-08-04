@@ -247,15 +247,16 @@ export const normalizeHostUrl = (
 };
 
 export const parsePairingUri = (value: string): PairingDescriptor => {
-  let parsed: URL;
-  try {
-    parsed = new URL(value.trim());
-  } catch {
-    throw new Error('Pairing link is not a valid URI');
+  const trimmed = value.trim();
+  if (!/^mira:\/\/pair(?:\?|$)/u.test(trimmed)) {
+    throw new Error('Pairing link must start with mira://pair');
   }
 
-  if (parsed.protocol !== 'mira:' || parsed.hostname !== 'pair') {
-    throw new Error('Pairing link must start with mira://pair');
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    throw new Error('Pairing link is not a valid URI');
   }
 
   const version = Number(parsed.searchParams.get('version'));

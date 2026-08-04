@@ -38,6 +38,19 @@
 | border | `#e8e6dc` | 输入框边框 |
 | border-light | `#f0eee6` | 导航栏、输入区分隔线 |
 
+## 深色主题
+
+| 名称 | 色值 | 用途 |
+|-----|------|------|
+| dark-canvas | `#0f0f10` | 页面主背景 |
+| dark-surface | `#1c1c1e` | 卡片、输入区和抬升表面 |
+| dark-border | `#2c2c2e` | 边框和分隔线 |
+| dark-text | `#f5f5f7` | 主标题和正文 |
+| dark-text-muted | `#9ca3af` | 次要信息 |
+| dark-primary | `#60a5fa` | 深色模式中的主要交互强调 |
+
+深色模式使用独立的中性色层级，不直接反转浅色 Token。Logo 和系统应用图标保持固定的 `#f5f4ed` 品牌画布。
+
 ## 语义色
 
 | 名称 | 背景 | 文字 | 用途 |

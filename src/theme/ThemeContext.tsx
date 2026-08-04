@@ -1,14 +1,17 @@
 import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from 'react';
 import { Appearance } from 'react-native';
-import { lightColors, darkColors, type ThemeColors } from './palette';
+import { themePresets, type ThemeColors, type ThemePresetId } from './palette';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
+export type AccentColor = ThemePresetId;
 
 interface ThemeContextValue {
   mode: ThemeMode;
   theme: 'light' | 'dark';
   colors: ThemeColors;
+  accentColor: AccentColor;
   setMode: (mode: ThemeMode) => void;
+  setAccentColor: (accentColor: AccentColor) => void;
   toggleTheme: () => void;
 }
 
@@ -24,9 +27,13 @@ function resolveEffectiveTheme(mode: ThemeMode): 'light' | 'dark' {
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [mode, setModeState] = useState<ThemeMode>('light');
+  const [accentColor, setAccentColor] = useState<AccentColor>('default');
 
   const theme = resolveEffectiveTheme(mode);
-  const colors = useMemo(() => (theme === 'light' ? lightColors : darkColors), [theme]);
+  const colors = useMemo(() => {
+    const preset = themePresets[accentColor];
+    return theme === 'light' ? preset.light : preset.dark;
+  }, [accentColor, theme]);
 
   const setMode = useCallback((next: ThemeMode) => {
     setModeState(next);
@@ -43,7 +50,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     mode,
     theme,
     colors,
+    accentColor,
     setMode,
+    setAccentColor,
     toggleTheme,
   };
 

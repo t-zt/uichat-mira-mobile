@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -21,6 +22,7 @@ import { miraHostClient } from '../api/mockMiraHost';
 import { useTheme } from '../theme/ThemeContext';
 import { fontSize, radius, shadows, sizing, spacing } from '../theme/tokens';
 import { AssistantMarkdown } from '../components/AssistantMarkdown';
+import { ConversationMenu } from '../components/ConversationMenu';
 
 function ThinkingIndicator({ color }: { color: string }) {
   const dots = useRef([
@@ -72,6 +74,7 @@ export function ChatScreen() {
   const route = useRoute<RouteProp<RootStackParamList, 'Chat'>>();
   const { sessionId, title } = route.params;
   const { colors } = useTheme();
+  const { width: windowWidth } = useWindowDimensions();
   const themedStyles = useMemo(
     () =>
       StyleSheet.create({
@@ -86,7 +89,13 @@ export function ChatScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [streamingText, setStreamingText] = useState('');
   const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
+  const [isMenuVisible, setIsMenuVisible] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState<{ top: number; right: number }>({
+    top: 0,
+    right: spacing.sm,
+  });
   const flatListRef = useRef<FlatList>(null);
+  const menuButtonRef = useRef<View>(null);
   const abortRef = useRef(false);
 
   useEffect(() => {
@@ -143,6 +152,16 @@ export function ChatScreen() {
   const handleStop = useCallback(() => {
     abortRef.current = true;
   }, []);
+
+  const openMenu = useCallback(() => {
+    menuButtonRef.current?.measureInWindow((x, y, width, height) => {
+      setMenuAnchor({
+        top: y + height + spacing.xs,
+        right: Math.max(spacing.sm, windowWidth - x - width),
+      });
+      setIsMenuVisible(true);
+    });
+  }, [windowWidth]);
 
   const handleRetry = useCallback(
     (msg: ChatMessage) => {
@@ -241,10 +260,12 @@ export function ChatScreen() {
           {title}
         </Text>
         <Pressable
+          ref={menuButtonRef}
+          collapsable={false}
           accessibilityRole="button"
-          accessibilityLabel="打开设置"
+          accessibilityLabel="打开会话菜单"
           hitSlop={8}
-          onPress={() => navigation.navigate('Settings')}
+          onPress={openMenu}
           style={({ pressed }) => [
             styles.iconButton,
             pressed && { backgroundColor: colors.bg.soft },
@@ -253,6 +274,13 @@ export function ChatScreen() {
           <MoreVertical size={22} color={colors.text.ink} />
         </Pressable>
       </View>
+
+      <ConversationMenu
+        visible={isMenuVisible}
+        title={title}
+        anchor={menuAnchor}
+        onClose={() => setIsMenuVisible(false)}
+      />
 
       <KeyboardAvoidingView
         style={styles.container}
