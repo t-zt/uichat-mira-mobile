@@ -18,7 +18,7 @@ import { Menu, MessageSquare, Pin, Settings as SettingsIcon, Trash2 } from 'luci
 import type { RootStackParamList } from '../types/navigation';
 import type { Session } from '../types';
 import { useHostStore } from '../store/hostStore';
-import { miraHostClient } from '../api/mockMiraHost';
+import { miraHostClient } from '../api/miraHostClient';
 import { useTheme } from '../theme/ThemeContext';
 import { fontSize, radius, sizing, spacing } from '../theme/tokens';
 import { CustomDrawer } from '../components/CustomDrawer';
@@ -55,13 +55,14 @@ interface SessionRowProps {
   connectionStatus: string;
   showUnreadIndicator: boolean;
   showPinnedIndicator: boolean;
+  canMutate: boolean;
   colors: ReturnType<typeof useTheme>['colors'];
   onOpen: () => void;
   onLongPress: () => void;
   onDelete: () => void;
 }
 
-function SessionRow({ item, connectionStatus, showUnreadIndicator, showPinnedIndicator, colors, onOpen, onLongPress, onDelete }: SessionRowProps) {
+function SessionRow({ item, connectionStatus, showUnreadIndicator, showPinnedIndicator, canMutate, colors, onOpen, onLongPress, onDelete }: SessionRowProps) {
   const translateX = useRef(new Animated.Value(0)).current;
   const isOpen = useRef(false);
   const dragStart = useRef(0);
@@ -81,6 +82,7 @@ function SessionRow({ item, connectionStatus, showUnreadIndicator, showPinnedInd
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponderCapture: (_, gesture) => {
+          if (!canMutate) return false;
           const isHorizontalSwipe = Math.abs(gesture.dx) > spacing.sm && Math.abs(gesture.dx) > Math.abs(gesture.dy);
           return isHorizontalSwipe && (gesture.dx < 0 || isOpen.current);
         },
@@ -98,7 +100,7 @@ function SessionRow({ item, connectionStatus, showUnreadIndicator, showPinnedInd
         },
         onPanResponderTerminate: () => animateTo(false),
       }),
-    [animateTo, translateX],
+    [animateTo, canMutate, translateX],
   );
   const animatedStyle = useMemo(() => ({ transform: [{ translateX }] }), [translateX]);
 
@@ -117,10 +119,12 @@ function SessionRow({ item, connectionStatus, showUnreadIndicator, showPinnedInd
 
   return (
     <View style={styles.swipeRow}>
-      <View style={[styles.deleteAction, { backgroundColor: colors.status.error }]}>
-        <Trash2 size={20} color={colors.onPrimary} />
-        <Text style={[styles.deleteActionText, { color: colors.onPrimary }]}>删除</Text>
-      </View>
+      {canMutate && (
+        <View style={[styles.deleteAction, { backgroundColor: colors.status.error }]}>
+          <Trash2 size={20} color={colors.onPrimary} />
+          <Text style={[styles.deleteActionText, { color: colors.onPrimary }]}>删除</Text>
+        </View>
+      )}
       <Animated.View style={animatedStyle} {...panResponder.panHandlers}>
         <Pressable
           style={({ pressed }) => [
@@ -129,7 +133,7 @@ function SessionRow({ item, connectionStatus, showUnreadIndicator, showPinnedInd
             pressed && { backgroundColor: colors.bg.soft },
           ]}
           onPress={handlePress}
-          onLongPress={onLongPress}
+          onLongPress={canMutate ? onLongPress : undefined}
         >
           <View style={[styles.avatar, { backgroundColor: colors.bg.card, borderColor: colors.border.default }]}>
             <MessageSquare size={22} strokeWidth={1.7} color={colors.primary} />
@@ -151,7 +155,7 @@ function SessionRow({ item, connectionStatus, showUnreadIndicator, showPinnedInd
           </View>
         </Pressable>
       </Animated.View>
-      {isSwipeOpen && (
+      {canMutate && isSwipeOpen && (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`删除会话 ${item.title}`}
@@ -171,6 +175,7 @@ export function SessionListScreen() {
   const { colors } = useTheme();
   const { connectionStatus } = useHostStore();
   const insets = useSafeAreaInsets();
+  const canMutateSessions = miraHostClient.supportsSessionMutations();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const drawerAnim = useState(new Animated.Value(-DRAWER_WIDTH))[0];
@@ -226,13 +231,14 @@ export function SessionListScreen() {
   );
 
   const handleStartRename = () => {
-    if (!menuSession) return;
+    if (!canMutateSessions || !menuSession) return;
     setRenameTarget(menuSession);
     setRenameText(menuSession.title);
     setMenuSession(null);
   };
 
   const handleConfirmRename = async () => {
+    if (!canMutateSessions) return;
     const title = renameText.trim();
     if (!title || !renameTarget) return;
     const target = renameTarget;
@@ -244,6 +250,7 @@ export function SessionListScreen() {
   };
 
   const handleConfirmDelete = async () => {
+    if (!canMutateSessions) return;
     const target = deleteTarget;
     setDeleteTarget(null);
     if (!target) return;
@@ -303,6 +310,7 @@ export function SessionListScreen() {
               connectionStatus={connectionStatus}
               showUnreadIndicator={index === 0}
               showPinnedIndicator={index === 0}
+              canMutate={canMutateSessions}
               colors={colors}
               onOpen={() => navigation.navigate('Chat', { sessionId: item.id, title: item.title })}
               onLongPress={() => setMenuSession(item)}
@@ -347,7 +355,7 @@ export function SessionListScreen() {
       )}
 
       {/* ── Long-press menu ─────────────────── */}
-      <Modal visible={menuSession !== null} transparent animationType="fade" onRequestClose={() => setMenuSession(null)}>
+      <Modal visible={canMutateSessions && menuSession !== null} transparent animationType="fade" onRequestClose={() => setMenuSession(null)}>
         <Pressable style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]} onPress={() => setMenuSession(null)}>
           <View style={[styles.actionSheet, { backgroundColor: colors.bg.canvas, paddingBottom: insets.bottom + 8 }]}>
             <Text style={[styles.menuTitle, { color: colors.text.soft, borderBottomColor: colors.border.soft }]} numberOfLines={1}>
@@ -373,7 +381,7 @@ export function SessionListScreen() {
       </Modal>
 
       {/* ── Rename dialog ───────────────────── */}
-      <Modal visible={renameTarget !== null} transparent animationType="fade" onRequestClose={() => setRenameTarget(null)}>
+      <Modal visible={canMutateSessions && renameTarget !== null} transparent animationType="fade" onRequestClose={() => setRenameTarget(null)}>
         <Pressable style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]} onPress={() => setRenameTarget(null)}>
           <View style={[styles.dialog, { backgroundColor: colors.bg.card }]}>
             <Text style={[styles.dialogTitle, { color: colors.text.ink }]}>重命名会话</Text>
@@ -409,7 +417,7 @@ export function SessionListScreen() {
       </Modal>
 
       {/* ── Delete confirm dialog ───────────── */}
-      <Modal visible={deleteTarget !== null} transparent animationType="fade" onRequestClose={() => setDeleteTarget(null)}>
+      <Modal visible={canMutateSessions && deleteTarget !== null} transparent animationType="fade" onRequestClose={() => setDeleteTarget(null)}>
         <Pressable style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]} onPress={() => setDeleteTarget(null)}>
           <View style={[styles.dialog, { backgroundColor: colors.bg.card }]}>
             <Text style={[styles.dialogTitle, { color: colors.text.ink }]}>删除会话</Text>

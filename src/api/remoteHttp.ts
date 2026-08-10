@@ -24,6 +24,11 @@ export interface RemoteJsonRequest<T> {
   signal?: AbortSignal;
   parse: (value: unknown) => T;
   allowInsecureDevelopment?: boolean;
+  /**
+   * raw 模式：跳过 `{success,data}` 信封校验，直接把响应体交给 parse。
+   * 用于桌面端格式不完全可控的接口（如 /login），由调用方自行宽容解析。
+   */
+  raw?: boolean;
 }
 
 const readResponseBody = async (response: Response): Promise<unknown> => {
@@ -119,6 +124,9 @@ export const requestRemoteJson = async <T>(
   }
 
   try {
+    if (request.raw === true) {
+      return request.parse(payload);
+    }
     return unwrapApiEnvelope(payload, request.parse);
   } catch (error) {
     const value = error as Error & { code?: string | number; details?: unknown };

@@ -18,7 +18,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ChevronLeft, MoreVertical, Send, Square } from 'lucide-react-native';
 import type { RootStackParamList } from '../types/navigation';
 import type { ChatMessage } from '../types';
-import { miraHostClient } from '../api/mockMiraHost';
+import { miraHostClient } from '../api/miraHostClient';
 import { useTheme } from '../theme/ThemeContext';
 import { fontSize, radius, shadows, sizing, spacing } from '../theme/tokens';
 import { AssistantMarkdown } from '../components/AssistantMarkdown';
@@ -88,7 +88,8 @@ export function ChatScreen() {
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [streamingText, setStreamingText] = useState('');
-  const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
+  // 发送失败：消息 id -> 具体错误信息（用于展示失败原因）
+  const [failedMessages, setFailedMessages] = useState<Map<string, string>>(new Map());
   const [isMenuVisible, setIsMenuVisible] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; right: number }>({
     top: 0,
@@ -140,8 +141,12 @@ export function ChatScreen() {
         };
         setMessages((prev) => [...prev, assistantMsg]);
         setStreamingText('');
-      } catch {
-        setFailedIds((prev) => new Set(prev).add(userMsg.id));
+      } catch (error) {
+        const message =
+          error instanceof Error && error.message
+            ? error.message
+            : '发送失败，请重试';
+        setFailedMessages((prev) => new Map(prev).set(userMsg.id, message));
       } finally {
         setIsLoading(false);
       }
@@ -151,6 +156,8 @@ export function ChatScreen() {
 
   const handleStop = useCallback(() => {
     abortRef.current = true;
+    // 中断当前实际使用的 Direct 或 Relay 流。
+    miraHostClient.cancelCurrentSend();
   }, []);
 
   const openMenu = useCallback(() => {
@@ -165,8 +172,8 @@ export function ChatScreen() {
 
   const handleRetry = useCallback(
     (msg: ChatMessage) => {
-      setFailedIds((prev) => {
-        const next = new Set(prev);
+      setFailedMessages((prev) => {
+        const next = new Map(prev);
         next.delete(msg.id);
         return next;
       });
@@ -179,7 +186,8 @@ export function ChatScreen() {
   const renderItem = useCallback(
     ({ item }: { item: ChatMessage }) => {
       const isUser = item.role === 'user';
-      const isFailed = isUser && failedIds.has(item.id);
+      const failureMessage = isUser ? failedMessages.get(item.id) : undefined;
+      const isFailed = failureMessage !== undefined;
       return (
         <View
           style={[
@@ -205,20 +213,27 @@ export function ChatScreen() {
               )}
             </View>
             {isFailed && (
-              <Pressable
-                style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.6 }]}
-                onPress={() => handleRetry(item)}
-              >
-                <Text style={[styles.retryText, { color: colors.status.error }]}>
-                  发送失败 · 点击重试
+              <>
+                <Text
+                  style={[styles.failureText, { color: colors.status.error }]}
+                >
+                  {failureMessage}
                 </Text>
-              </Pressable>
+                <Pressable
+                  style={({ pressed }) => [styles.retryBtn, pressed && { opacity: 0.6 }]}
+                  onPress={() => handleRetry(item)}
+                >
+                  <Text style={[styles.retryText, { color: colors.status.error }]}>
+                    点击重试
+                  </Text>
+                </Pressable>
+              </>
             )}
           </View>
         </View>
       );
     },
-    [failedIds, handleRetry, colors, themedStyles],
+    [failedMessages, handleRetry, colors, themedStyles],
   );
 
   const renderFooter = useCallback(() => {
@@ -411,6 +426,7 @@ const styles = StyleSheet.create({
   thinkingDot: { width: 6, height: 6, borderRadius: 3 },
   retryBtn: { marginTop: 4, alignSelf: 'flex-end', paddingVertical: 4, paddingHorizontal: 8 },
   retryText: { fontSize: fontSize.sm },
+  failureText: { fontSize: fontSize.sm, lineHeight: 18, marginTop: 6 },
   inputBar: {
     paddingHorizontal: 14,
     paddingTop: spacing.sm,

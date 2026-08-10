@@ -6,9 +6,9 @@ import {
 } from '../api/remoteMiraHost';
 import {
   REMOTE_DEVICE_SCOPES,
-  type PairingDescriptor,
   type RemoteDeviceScope,
 } from '../protocol/remoteHostV1';
+import type { PairingDescriptorV1 } from '../protocol/remotePairingV1';
 
 export type RemotePairingPhase =
   | 'idle'
@@ -39,7 +39,7 @@ const INITIAL_STATE: RemotePairingViewState = {
 const POLL_INTERVAL_MS = 1_500;
 
 export const useRemotePairing = (
-  descriptor: PairingDescriptor | null,
+  descriptor: PairingDescriptorV1 | null,
   connectivityReady: boolean,
 ) => {
   const [state, setState] = useState<RemotePairingViewState>(INITIAL_STATE);
@@ -61,7 +61,13 @@ export const useRemotePairing = (
 
   useEffect(() => {
     reset();
-  }, [descriptor?.challengeId, descriptor?.hostUrl, reset]);
+  }, [
+    descriptor?.challengeId,
+    descriptor?.hostUrl,
+    descriptor?.relay?.endpoint,
+    descriptor?.relay?.relayId,
+    reset,
+  ]);
 
   useEffect(() => stopPolling, [stopPolling]);
 
@@ -124,7 +130,7 @@ export const useRemotePairing = (
             return;
           }
 
-          setState((current) => ({
+          setState(current => ({
             ...current,
             phase: 'waiting_approval',
             pending,
@@ -159,11 +165,11 @@ export const useRemotePairing = (
       });
       return;
     }
-    if (!connectivityReady) {
+    if (!connectivityReady && !descriptor.relay) {
       setState({
         ...INITIAL_STATE,
         phase: 'blocked',
-        message: 'Tailscale 联通尚未通过，未提交配对申请。',
+        message: '桌面端直连尚不可用，未提交配对申请。',
       });
       return;
     }
@@ -191,6 +197,7 @@ export const useRemotePairing = (
       });
       const pending: PendingPairing = {
         descriptor,
+        transport: claim.transport,
         claimId: claim.claimId,
         pollToken: claim.pollToken,
         expiresAt: claim.expiresAt,

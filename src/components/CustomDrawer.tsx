@@ -26,7 +26,7 @@ import {
 import type { RootStackParamList } from '../types/navigation';
 import type { Session } from '../types';
 import { useTheme } from '../theme/ThemeContext';
-import { miraHostClient } from '../api/mockMiraHost';
+import { miraHostClient } from '../api/miraHostClient';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 const miraLogo = require('../../assets/branding/mira-logo-square.png');

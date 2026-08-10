@@ -1,14 +1,14 @@
 import { useEffect, useRef } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
-import { remoteMiraHostClient } from '../api/remoteMiraHost';
+import { miraHostClient } from '../api/miraHostClient';
 import { useHostStore } from '../store/hostStore';
 import { useTailscaleConnectivityStore } from '../store/tailscaleConnectivityStore';
 import { subscribeToSystemNetworkChanges } from './systemNetworkMonitor';
 
 /**
- * Keeps the observable Mobile -> Tailscale -> Mira Host transport state fresh.
- * It never clears device credentials on transport failures; authorization is a
- * separate layer and is validated only after connectivity becomes ready.
+ * Keeps the observable Direct/Tailscale transport state fresh. In paired
+ * Remote Host mode, a failed Direct probe does not mark the whole connection
+ * offline while Relay remains an available fallback.
  */
 export function TailscaleConnectivityLifecycle() {
   const configuredHostUrl = useHostStore((state) => state.config?.hostUrl ?? '');
@@ -21,13 +21,13 @@ export function TailscaleConnectivityLifecycle() {
 
   useEffect(() => {
     let cancelled = false;
-    if (configuredHostUrl || !remoteMiraHostClient.isSecureStorageAvailable()) {
+    if (configuredHostUrl || !miraHostClient.isSecureStorageAvailable()) {
       return () => {
         cancelled = true;
       };
     }
 
-    remoteMiraHostClient
+    miraHostClient
       .getStoredHostUrl()
       .then((storedHostUrl) => {
         if (cancelled || !storedHostUrl) return;
@@ -37,7 +37,7 @@ export function TailscaleConnectivityLifecycle() {
         });
       })
       .catch(() => {
-        if (!cancelled) {
+        if (!cancelled && !miraHostClient.hasRelayFallback()) {
           useHostStore.getState().setConnectionStatus('disconnected');
         }
       });
@@ -87,8 +87,6 @@ export function TailscaleConnectivityLifecycle() {
         clearTimeout(networkRecoveryTimer.current);
       }
 
-      // VPN, Wi-Fi and cellular transitions often emit several callbacks.
-      // Debounce them into one transport verification against the actual Host.
       networkRecoveryTimer.current = setTimeout(() => {
         const store = useTailscaleConnectivityStore.getState();
         const target = store.hostUrl.trim();
@@ -111,7 +109,10 @@ export function TailscaleConnectivityLifecycle() {
     const hostState = useHostStore.getState();
 
     if (connectivityState === 'probing') {
-      if (hostState.connectionStatus === 'connected') {
+      if (
+        hostState.connectionStatus === 'connected' &&
+        !miraHostClient.hasRelayFallback()
+      ) {
         hostState.setConnectionStatus('reconnecting');
       }
       return () => {
@@ -120,14 +121,14 @@ export function TailscaleConnectivityLifecycle() {
     }
 
     if (connectivityState === 'ready') {
-      if (!remoteMiraHostClient.isSecureStorageAvailable()) {
+      if (!miraHostClient.isSecureStorageAvailable()) {
         hostState.setConnectionStatus('disconnected');
         return () => {
           cancelled = true;
         };
       }
 
-      void remoteMiraHostClient
+      void miraHostClient
         .restoreConnection()
         .then((restored) => {
           if (cancelled) return;
@@ -137,7 +138,9 @@ export function TailscaleConnectivityLifecycle() {
         })
         .catch(() => {
           if (cancelled) return;
-          useHostStore.getState().setConnectionStatus('disconnected');
+          if (!miraHostClient.hasRelayFallback()) {
+            useHostStore.getState().setConnectionStatus('disconnected');
+          }
         });
 
       return () => {
@@ -145,15 +148,13 @@ export function TailscaleConnectivityLifecycle() {
       };
     }
 
-    if (connectivityState !== 'idle') {
+    if (connectivityState !== 'idle' && !miraHostClient.hasRelayFallback()) {
       const status = hostState.connectionStatus;
       if (
         status === 'connected' ||
         status === 'connecting' ||
         status === 'reconnecting'
       ) {
-        // Keep the credential, but report transport recovery instead of a
-        // false authenticated connection while Tailnet is unavailable.
         hostState.setConnectionStatus('reconnecting');
       }
     }
