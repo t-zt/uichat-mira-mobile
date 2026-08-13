@@ -29,6 +29,7 @@ import {
   requestRemoteJson,
   type RemoteJsonRequest,
 } from './remoteHttp';
+import { RemoteTransport, RemoteTransportRequest } from './remoteTransport';
 
 export interface MobileDeviceIdentity {
   name: string;
@@ -78,12 +79,21 @@ const normalizeDeviceName = (value: string) => {
 
 export class RemoteMiraHostClient {
   private activeCredential: StoredDeviceCredential | null = null;
+  private transport: RemoteTransport | null = null;
 
   constructor(
     private readonly credentialStore: DeviceCredentialStore = deviceCredentialStore,
     private readonly jsonTransport: RemoteJsonTransport = requestRemoteJson,
     private readonly sseTransport: RemoteSseTransport = openPostSse,
   ) {}
+
+  setTransport(transport: RemoteTransport | null): void {
+    this.transport = transport;
+  }
+
+  getTransport(): RemoteTransport | null {
+    return this.transport;
+  }
 
   isSecureStorageAvailable() {
     return this.credentialStore.isAvailable();
@@ -239,37 +249,79 @@ export class RemoteMiraHostClient {
   }
 
   async listThreads(): Promise<RemoteThread[]> {
+    const path = '/threads?status=active&sortBy=updatedAt&sortOrder=desc';
+    const parse = (value: unknown) => parseArray(value, parseRemoteThread, 'threads');
+    
+    if (this.transport) {
+      return this.withCredential((credential) =>
+        this.transport!.request({
+          path,
+          method: 'GET',
+          credential: credential.credential,
+          parse,
+        }),
+      );
+    }
+    
     return this.withCredential((credential) =>
       this.jsonTransport({
         hostUrl: credential.hostUrl,
-        path: '/threads?status=active&sortBy=updatedAt&sortOrder=desc',
+        path,
         credential: credential.credential,
         allowInsecureDevelopment: __DEV__,
-        parse: (value) => parseArray(value, parseRemoteThread, 'threads'),
+        parse,
       }),
     );
   }
 
   async getThread(threadId: string): Promise<RemoteThread> {
+    const path = `/threads/${encodeURIComponent(threadId)}`;
+    const parse = parseRemoteThread;
+    
+    if (this.transport) {
+      return this.withCredential((credential) =>
+        this.transport!.request({
+          path,
+          method: 'GET',
+          credential: credential.credential,
+          parse,
+        }),
+      );
+    }
+    
     return this.withCredential((credential) =>
       this.jsonTransport({
         hostUrl: credential.hostUrl,
-        path: `/threads/${encodeURIComponent(threadId)}`,
+        path,
         credential: credential.credential,
         allowInsecureDevelopment: __DEV__,
-        parse: parseRemoteThread,
+        parse,
       }),
     );
   }
 
   async getMessages(threadId: string): Promise<RemoteMessage[]> {
+    const path = `/threads/${encodeURIComponent(threadId)}/messages`;
+    const parse = (value: unknown) => parseArray(value, parseRemoteMessage, 'messages');
+    
+    if (this.transport) {
+      return this.withCredential((credential) =>
+        this.transport!.request({
+          path,
+          method: 'GET',
+          credential: credential.credential,
+          parse,
+        }),
+      );
+    }
+    
     return this.withCredential((credential) =>
       this.jsonTransport({
         hostUrl: credential.hostUrl,
-        path: `/threads/${encodeURIComponent(threadId)}/messages`,
+        path,
         credential: credential.credential,
         allowInsecureDevelopment: __DEV__,
-        parse: (value) => parseArray(value, parseRemoteMessage, 'messages'),
+        parse,
       }),
     );
   }
@@ -289,22 +341,34 @@ export class RemoteMiraHostClient {
     }
 
     const credential = await this.requireCredential();
+    const body = {
+      id: input.threadId,
+      messageId: input.messageId,
+      messages: [{ role: 'user', content }],
+      ...(typeof input.agentEnabled === 'boolean'
+        ? { agentEnabled: input.agentEnabled }
+        : {}),
+      ...(input.requestedToolGroupIds
+        ? { requestedToolGroupIds: input.requestedToolGroupIds }
+        : {}),
+    };
+
+    if (this.transport) {
+      return this.transport.stream({
+        path: '/proxy/chat/default',
+        method: 'POST',
+        credential: credential.credential,
+        body,
+        parse: parseRemoteChatStreamEvent,
+      });
+    }
+
     return this.sseTransport({
       hostUrl: credential.hostUrl,
       path: '/proxy/chat/default',
       credential: credential.credential,
       allowInsecureDevelopment: __DEV__,
-      body: {
-        id: input.threadId,
-        messageId: input.messageId,
-        messages: [{ role: 'user', content }],
-        ...(typeof input.agentEnabled === 'boolean'
-          ? { agentEnabled: input.agentEnabled }
-          : {}),
-        ...(input.requestedToolGroupIds
-          ? { requestedToolGroupIds: input.requestedToolGroupIds }
-          : {}),
-      },
+      body,
       parse: parseRemoteChatStreamEvent,
     });
   }
@@ -336,12 +400,24 @@ export class RemoteMiraHostClient {
     hostUrl: string,
     credential: string,
   ): Promise<RemoteManifest> {
+    const path = '/remote/v1/manifest';
+    const parse = parseRemoteManifest;
+    
+    if (this.transport) {
+      return this.transport.request({
+        path,
+        method: 'GET',
+        credential,
+        parse,
+      });
+    }
+    
     return this.jsonTransport({
       hostUrl,
-      path: '/remote/v1/manifest',
+      path,
       credential,
       allowInsecureDevelopment: __DEV__,
-      parse: parseRemoteManifest,
+      parse,
     });
   }
 
@@ -350,14 +426,28 @@ export class RemoteMiraHostClient {
     method: 'GET' | 'POST',
     suffix: string,
   ): Promise<RemoteAgentRun> {
+    const path = `/agent/runs/${encodeURIComponent(runId)}${suffix}`;
+    const parse = parseRemoteAgentRun;
+    
+    if (this.transport) {
+      return this.withCredential((credential) =>
+        this.transport!.request({
+          path,
+          method,
+          credential: credential.credential,
+          parse,
+        }),
+      );
+    }
+    
     return this.withCredential((credential) =>
       this.jsonTransport({
         hostUrl: credential.hostUrl,
-        path: `/agent/runs/${encodeURIComponent(runId)}${suffix}`,
+        path,
         method,
         credential: credential.credential,
         allowInsecureDevelopment: __DEV__,
-        parse: parseRemoteAgentRun,
+        parse,
       }),
     );
   }
