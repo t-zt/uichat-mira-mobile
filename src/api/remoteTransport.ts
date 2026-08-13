@@ -1,6 +1,7 @@
 import { type RemoteJsonRequest } from './remoteHttp';
 import { openPostSse, type PostSseSession } from './postSse';
 import { type RelayRemoteTransport, type RelayStreamEvent } from './relayRemoteTransport';
+import { TextDecoder } from './webPolyfills';
 
 export interface RemoteTransport {
   type: 'direct' | 'relay';
@@ -50,7 +51,7 @@ export class DirectRemoteTransport implements RemoteTransport {
     return this.sseTransport({
       hostUrl: this.hostUrl,
       path: input.path,
-      credential: input.credential,
+      credential: input.credential ?? '',
       body: input.body,
       allowInsecureDevelopment: __DEV__,
       parse: input.parse,
@@ -120,15 +121,12 @@ export class RelayAdaptedTransport implements RemoteTransport {
       path: input.path,
       headers,
       body: input.body,
+      signal: input.signal,
     });
 
     const session: PostSseSession<T> = {
-      status: result.status,
-      headers: result.headers,
       events: this.adaptEvents(result.events, input.parse),
-      cancel: () => {
-        // Cancel is handled by the relay transport
-      },
+      abort: result.cancel,
     };
 
     return session;

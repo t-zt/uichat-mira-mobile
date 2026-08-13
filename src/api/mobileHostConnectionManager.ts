@@ -1,5 +1,5 @@
 import { RemoteMiraHostClient } from './remoteMiraHost';
-import { RemoteTransportFactory, TransportPreference } from './remoteTransportFactory';
+import { RemoteTransportFactory } from './remoteTransportFactory';
 import { RelayTransportConfig } from './relayRemoteTransport';
 
 export class MobileHostConnectionManager {
@@ -11,7 +11,7 @@ export class MobileHostConnectionManager {
     this.transportFactory = RemoteTransportFactory.getInstance();
   }
 
-  async configureDirectTransport(hostUrl: string): Promise<void> {
+  async configureDirectTransport(_hostUrl: string): Promise<void> {
     this.transportFactory.setPreference({ mode: 'direct' });
     // Direct transport is the default, no additional setup needed
     // The client will use jsonTransport/sseTransport directly

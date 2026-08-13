@@ -29,7 +29,7 @@ import {
   requestRemoteJson,
   type RemoteJsonRequest,
 } from './remoteHttp';
-import { RemoteTransport, RemoteTransportRequest } from './remoteTransport';
+import { RemoteTransport } from './remoteTransport';
 
 export interface MobileDeviceIdentity {
   name: string;

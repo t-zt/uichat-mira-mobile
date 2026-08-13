@@ -1,4 +1,5 @@
 import { RELAY_PROTOCOL_VERSION, type RelayFrame, type RelayOutboundFrame } from '../protocol/relayFrames';
+import { TextEncoder, TextDecoder, btoa, atob } from './webPolyfills';
 
 export interface RelayTransportConfig {
   relayUrl: string;
@@ -14,16 +15,70 @@ export interface RelayRequestOptions {
   signal?: AbortSignal;
 }
 
-export interface RelayStreamOptions extends RelayRequestOptions {
-  onChunk?: (data: Uint8Array) => void;
-  onEvent?: (event: any) => void;
-}
+export interface RelayStreamOptions extends RelayRequestOptions {}
 
 export type RelayTransportState = 'disconnected' | 'connecting' | 'connected' | 'error';
 
 export interface RelayStreamEvent {
   type: string;
   data: any;
+}
+
+class AsyncPushQueue<T> implements AsyncIterableIterator<T> {
+  private readonly values: T[] = [];
+  private readonly waiters: Array<{
+    resolve: (result: IteratorResult<T>) => void;
+    reject: (error: unknown) => void;
+  }> = [];
+  private closed = false;
+  private failure: unknown = null;
+
+  push(value: T) {
+    if (this.closed || this.failure) return;
+    const waiter = this.waiters.shift();
+    if (waiter) {
+      waiter.resolve({ value, done: false });
+      return;
+    }
+    this.values.push(value);
+  }
+
+  close() {
+    if (this.closed || this.failure) return;
+    this.closed = true;
+    while (this.waiters.length > 0) {
+      this.waiters.shift()?.resolve({ value: undefined, done: true });
+    }
+  }
+
+  fail(error: unknown) {
+    if (this.closed || this.failure) return;
+    this.failure = error;
+    this.values.length = 0;
+    while (this.waiters.length > 0) {
+      this.waiters.shift()?.reject(error);
+    }
+  }
+
+  next(): Promise<IteratorResult<T>> {
+    if (this.failure) {
+      return Promise.reject(this.failure);
+    }
+    const value = this.values.shift();
+    if (value !== undefined) {
+      return Promise.resolve({ value, done: false });
+    }
+    if (this.closed) {
+      return Promise.resolve({ value: undefined, done: true });
+    }
+    return new Promise((resolve, reject) => {
+      this.waiters.push({ resolve, reject });
+    });
+  }
+
+  [Symbol.asyncIterator](): AsyncIterableIterator<T> {
+    return this;
+  }
 }
 
 type PendingRequest = {
@@ -33,18 +88,30 @@ type PendingRequest = {
   headers: Record<string, string>;
   status: number;
   completed: boolean;
-  onChunk?: (data: Uint8Array) => void;
+};
+
+type PendingStreamRequest = {
+  resolve: () => void;
+  reject: (reason: Error) => void;
+  status: number;
+  headers: Record<string, string>;
+  completed: boolean;
+  queue: AsyncPushQueue<RelayStreamEvent>;
 };
 
 export class RelayRemoteTransport {
-  private ws: WebSocket | null = null;
+  private ws: any = null;
   private state: RelayTransportState = 'disconnected';
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
   private readonly maxReconnectAttempts = 5;
   private readonly reconnectDelay = 1000;
   private readonly pendingRequests = new Map<string, PendingRequest>();
+  private readonly pendingStreamRequests = new Map<string, PendingStreamRequest>();
   private requestIdCounter = 0;
+  private reconnecting = false;
+  private readonly stateListeners = new Set<(state: RelayTransportState, info?: { attempt: number }) => void>();
+  private readonly messageListeners = new Set<(event: string) => void>();
 
   constructor(private readonly config: RelayTransportConfig) {}
 
@@ -52,24 +119,43 @@ export class RelayRemoteTransport {
     return this.state;
   }
 
+  onStateChange(listener: (state: RelayTransportState, info?: { attempt: number }) => void): () => void {
+    this.stateListeners.add(listener);
+    return () => this.stateListeners.delete(listener);
+  }
+
+  onMessage(listener: (event: string) => void): () => void {
+    this.messageListeners.add(listener);
+    return () => this.messageListeners.delete(listener);
+  }
+
+  private notifyStateChange(newState: RelayTransportState, info?: { attempt: number }): void {
+    this.state = newState;
+    this.stateListeners.forEach(listener => listener(newState, info));
+  }
+
+  private notifyMessage(message: string): void {
+    this.messageListeners.forEach(listener => listener(message));
+  }
+
   async connect(): Promise<void> {
     if (this.state === 'connected' || this.state === 'connecting') {
       return;
     }
 
-    this.state = 'connecting';
+    this.notifyStateChange('connecting');
     const wsUrl = `${this.config.relayUrl.replace(/\/$/, '')}/v1/relay/${encodeURIComponent(this.config.relayId)}/socket`;
     
     try {
       this.ws = new WebSocket(wsUrl);
-      this.ws.onopen = this.handleOpen.bind(this);
-      this.ws.onmessage = this.handleMessage.bind(this);
-      this.ws.onerror = this.handleError.bind(this);
-      this.ws.onclose = this.handleClose.bind(this);
+      this.ws.onopen = () => this.handleOpen();
+      this.ws.onmessage = (event: WebSocketMessageEvent) => this.handleMessage(event);
+      this.ws.onerror = () => this.handleError();
+      this.ws.onclose = () => this.handleClose();
 
       await this.waitForConnection();
     } catch (error) {
-      this.state = 'error';
+      this.notifyStateChange('error');
       throw new Error(`Failed to connect to relay: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -77,11 +163,12 @@ export class RelayRemoteTransport {
   disconnect(): void {
     this.clearReconnectTimer();
     this.rejectAllPendingRequests('Relay disconnected');
+    this.rejectAllPendingStreamRequests('Relay disconnected');
     if (this.ws) {
       this.ws.close();
       this.ws = null;
     }
-    this.state = 'disconnected';
+    this.notifyStateChange('disconnected');
   }
 
   async request(options: RelayRequestOptions): Promise<{ status: number; headers: Record<string, string>; body: Uint8Array }> {
@@ -91,7 +178,7 @@ export class RelayRemoteTransport {
 
     const requestId = this.generateRequestId();
     const bodyBytes = options.body ? new TextEncoder().encode(JSON.stringify(options.body)) : undefined;
-    const bodyBase64 = bodyBytes ? this.toBase64(bodyBytes) : undefined;
+    const bodyBase64 = bodyBytes ? btoa(this.bytesToBinary(bodyBytes)) : undefined;
 
     const frame: RelayOutboundFrame = {
       version: RELAY_PROTOCOL_VERSION,
@@ -117,67 +204,102 @@ export class RelayRemoteTransport {
 
       if (options.signal) {
         options.signal.onabort = () => {
-          if (!pending.completed) {
-            this.sendFrame({
-              version: RELAY_PROTOCOL_VERSION,
-              type: 'cancel',
-              requestId,
-            });
-            pending.reject(new Error('Request cancelled'));
-            this.pendingRequests.delete(requestId);
-          }
+          this.cancelRequest(requestId);
         };
       }
     });
   }
 
-  async stream(options: RelayStreamOptions): Promise<{ status: number; headers: Record<string, string>; body: Uint8Array; events: AsyncIterable<RelayStreamEvent> }> {
-    const result = await this.request(options);
-    const events = this.parseSseEvents(result.body);
-    return {
-      ...result,
-      events,
-    };
-  }
-
-  private *parseSseEvents(body: Uint8Array): Generator<RelayStreamEvent, void, unknown> {
-    const text = new TextDecoder().decode(body);
-    const lines = text.split('\n');
-    let eventBuffer = '';
-
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        eventBuffer = line.slice(6);
-      } else if (line === '' && eventBuffer) {
-        try {
-          const parsed = JSON.parse(eventBuffer);
-          yield {
-            type: parsed.type || 'unknown',
-            data: parsed,
-          };
-        } catch {
-          yield {
-            type: 'error',
-            data: eventBuffer,
-          };
-        }
-        eventBuffer = '';
-      }
+  async stream(options: RelayStreamOptions): Promise<{
+    status: number;
+    headers: Record<string, string>;
+    events: AsyncIterable<RelayStreamEvent>;
+    cancel: () => void;
+  }> {
+    if (this.state !== 'connected') {
+      await this.connect();
     }
 
-    if (eventBuffer) {
-      try {
-        const parsed = JSON.parse(eventBuffer);
-        yield {
-          type: parsed.type || 'unknown',
-          data: parsed,
-        };
-      } catch {
-        yield {
-          type: 'error',
-          data: eventBuffer,
+    const requestId = this.generateRequestId();
+    const bodyBytes = options.body ? new TextEncoder().encode(JSON.stringify(options.body)) : undefined;
+    const bodyBase64 = bodyBytes ? btoa(this.bytesToBinary(bodyBytes)) : undefined;
+
+    const frame: RelayOutboundFrame = {
+      version: RELAY_PROTOCOL_VERSION,
+      type: 'request',
+      requestId,
+      method: options.method.toUpperCase(),
+      path: options.path,
+      headers: options.headers,
+      ...(bodyBase64 ? { bodyBase64 } : {}),
+    };
+
+    const queue = new AsyncPushQueue<RelayStreamEvent>();
+    
+    return new Promise<{
+      status: number;
+      headers: Record<string, string>;
+      events: AsyncIterable<RelayStreamEvent>;
+      cancel: () => void;
+    }>((resolve, reject) => {
+      const pending: PendingStreamRequest = {
+        resolve: () => {},
+        reject,
+        status: 0,
+        headers: {},
+        completed: false,
+        queue,
+      };
+      
+      pending.resolve = () => {
+        if (!pending.completed) {
+          pending.completed = true;
+          resolve({
+            status: pending.status,
+            headers: pending.headers,
+            events: queue,
+            cancel: () => this.cancelStreamRequest(requestId),
+          });
+        }
+      };
+      
+      this.pendingStreamRequests.set(requestId, pending);
+      this.sendFrame(frame);
+
+      if (options.signal) {
+        options.signal.onabort = () => {
+          this.cancelStreamRequest(requestId);
         };
       }
+    });
+  }
+
+  private cancelRequest(requestId: string): void {
+    const pending = this.pendingRequests.get(requestId);
+    if (pending && !pending.completed) {
+      this.sendFrame({
+        version: RELAY_PROTOCOL_VERSION,
+        type: 'cancel',
+        requestId,
+      });
+      pending.completed = true;
+      pending.reject(new Error('Request cancelled'));
+      this.pendingRequests.delete(requestId);
+    }
+  }
+
+  private cancelStreamRequest(requestId: string): void {
+    const pending = this.pendingStreamRequests.get(requestId);
+    if (pending && !pending.completed) {
+      this.sendFrame({
+        version: RELAY_PROTOCOL_VERSION,
+        type: 'cancel',
+        requestId,
+      });
+      pending.completed = true;
+      pending.queue.close();
+      pending.reject(new Error('Stream cancelled'));
+      this.pendingStreamRequests.delete(requestId);
     }
   }
 
@@ -213,7 +335,7 @@ export class RelayRemoteTransport {
     this.sendFrame(helloFrame);
   }
 
-  private handleMessage(event: MessageEvent): void {
+  private handleMessage(event: any): void {
     try {
       const data = JSON.parse(event.data) as RelayFrame;
       this.processFrame(data);
@@ -223,11 +345,11 @@ export class RelayRemoteTransport {
   }
 
   private handleError(): void {
-    this.state = 'error';
+    this.notifyStateChange('error');
   }
 
   private handleClose(): void {
-    this.state = 'disconnected';
+    this.notifyStateChange('disconnected');
     this.ws = null;
     this.scheduleReconnect();
   }
@@ -235,8 +357,10 @@ export class RelayRemoteTransport {
   private processFrame(frame: RelayFrame): void {
     switch (frame.type) {
       case 'hello_ack':
-        this.state = 'connected';
+        this.notifyStateChange('connected');
         this.reconnectAttempts = 0;
+        this.reconnecting = false;
+        this.notifyMessage('Connected to relay');
         break;
 
       case 'response':
@@ -262,15 +386,54 @@ export class RelayRemoteTransport {
     if (pending) {
       pending.status = status;
       pending.headers = headers;
+      return;
+    }
+
+    const streamPending = this.pendingStreamRequests.get(requestId);
+    if (streamPending) {
+      streamPending.status = status;
+      streamPending.headers = headers;
     }
   }
 
   private handleChunk(requestId: string, base64Data: string): void {
+    const data = this.fromBase64(base64Data);
+    
     const pending = this.pendingRequests.get(requestId);
     if (pending) {
-      const data = this.fromBase64(base64Data);
       pending.chunks.push(data);
-      pending.onChunk?.(data);
+      return;
+    }
+
+    const streamPending = this.pendingStreamRequests.get(requestId);
+    if (streamPending) {
+      this.parseAndPushSseEvents(streamPending.queue, data);
+    }
+  }
+
+  private parseAndPushSseEvents(queue: AsyncPushQueue<RelayStreamEvent>, chunk: Uint8Array): void {
+    const text = new TextDecoder().decode(chunk);
+    const lines = text.split('\n');
+    let eventBuffer = '';
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        eventBuffer = line.slice(6);
+      } else if (line === '' && eventBuffer) {
+        try {
+          const parsed = JSON.parse(eventBuffer);
+          queue.push({
+            type: parsed.type || 'unknown',
+            data: parsed,
+          });
+        } catch {
+          queue.push({
+            type: 'error',
+            data: eventBuffer,
+          });
+        }
+        eventBuffer = '';
+      }
     }
   }
 
@@ -285,6 +448,15 @@ export class RelayRemoteTransport {
         body,
       });
       this.pendingRequests.delete(requestId);
+      return;
+    }
+
+    const streamPending = this.pendingStreamRequests.get(requestId);
+    if (streamPending && !streamPending.completed) {
+      streamPending.completed = true;
+      streamPending.queue.close();
+      streamPending.resolve();
+      this.pendingStreamRequests.delete(requestId);
     }
   }
 
@@ -295,32 +467,51 @@ export class RelayRemoteTransport {
         pending.completed = true;
         pending.reject(new Error(`Relay error: ${frame.code} - ${frame.message}`));
         this.pendingRequests.delete(frame.requestId);
+        return;
+      }
+
+      const streamPending = this.pendingStreamRequests.get(frame.requestId);
+      if (streamPending && !streamPending.completed) {
+        streamPending.completed = true;
+        streamPending.queue.fail(new Error(`Relay error: ${frame.code} - ${frame.message}`));
+        streamPending.reject(new Error(`Relay error: ${frame.code} - ${frame.message}`));
+        this.pendingStreamRequests.delete(frame.requestId);
       }
     } else {
-      this.state = 'error';
+      this.notifyStateChange('error');
+      this.notifyMessage(`Relay error: ${frame.code} - ${frame.message}`);
     }
   }
 
   private sendFrame(frame: RelayOutboundFrame): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+    if (this.ws && this.ws.readyState === 1) {
       this.ws.send(JSON.stringify(frame));
     }
   }
 
   private scheduleReconnect(): void {
+    if (this.reconnecting) return;
+    this.reconnecting = true;
+
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      this.state = 'error';
+      this.notifyStateChange('error');
+      this.notifyMessage('Max reconnection attempts reached');
+      this.reconnecting = false;
       return;
     }
 
     this.reconnectAttempts++;
+    this.notifyMessage(`Reconnecting... attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
+    const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
+    
     this.reconnectTimer = setTimeout(async () => {
       try {
         await this.connect();
       } catch {
+        this.reconnecting = false;
         this.scheduleReconnect();
       }
-    }, this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1));
+    }, delay);
   }
 
   private clearReconnectTimer(): void {
@@ -340,26 +531,40 @@ export class RelayRemoteTransport {
     }
   }
 
+  private rejectAllPendingStreamRequests(message: string): void {
+    for (const [requestId, pending] of this.pendingStreamRequests) {
+      if (!pending.completed) {
+        pending.completed = true;
+        pending.queue.fail(new Error(message));
+        pending.reject(new Error(message));
+      }
+      this.pendingStreamRequests.delete(requestId);
+    }
+  }
+
   private generateRequestId(): string {
     this.requestIdCounter++;
     return `req_${Date.now()}_${this.requestIdCounter}`;
   }
 
-  private toBase64(bytes: Uint8Array): string {
+  private bytesToBinary(bytes: Uint8Array): string {
     let binary = '';
     for (let i = 0; i < bytes.length; i++) {
       binary += String.fromCharCode(bytes[i]);
     }
-    return btoa(binary);
+    return binary;
   }
 
-  private fromBase64(base64: string): Uint8Array {
-    const binary = atob(base64);
+  private fromBinary(binary: string): Uint8Array {
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) {
       bytes[i] = binary.charCodeAt(i);
     }
     return bytes;
+  }
+
+  private fromBase64(base64: string): Uint8Array {
+    return this.fromBinary(atob(base64));
   }
 
   private concatChunks(chunks: Uint8Array[]): Uint8Array {

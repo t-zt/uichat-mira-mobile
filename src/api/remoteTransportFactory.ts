@@ -1,4 +1,4 @@
-import { DeviceCredentialStore, StoredDeviceCredential, deviceCredentialStore } from '../security/deviceCredentialStore';
+import { StoredDeviceCredential } from '../security/deviceCredentialStore';
 import { DirectRemoteTransport, RelayAdaptedTransport, RemoteTransport, RemoteTransportState } from './remoteTransport';
 import { RelayRemoteTransport, RelayTransportConfig } from './relayRemoteTransport';
 import { requestRemoteJson } from './remoteHttp';
@@ -16,9 +16,7 @@ export class RemoteTransportFactory {
   private relayAdaptedTransport: RelayAdaptedTransport | null = null;
   private preference: TransportPreference = { mode: 'auto' };
 
-  constructor(
-    private readonly credentialStore: DeviceCredentialStore = deviceCredentialStore,
-  ) {}
+  constructor() {}
 
   static getInstance(): RemoteTransportFactory {
     if (!RemoteTransportFactory.instance) {
