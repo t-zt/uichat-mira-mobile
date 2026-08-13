@@ -20,6 +20,8 @@ export type RemotePairingPhase =
   | 'expired'
   | 'error';
 
+export type TransportMode = 'auto' | 'direct' | 'relay';
+
 export interface RemotePairingViewState {
   phase: RemotePairingPhase;
   pending: PendingPairing | null;
@@ -38,10 +40,17 @@ const INITIAL_STATE: RemotePairingViewState = {
 
 const POLL_INTERVAL_MS = 1_500;
 
-export const useRemotePairing = (
-  descriptor: PairingDescriptor | null,
-  connectivityReady: boolean,
-) => {
+export interface UseRemotePairingOptions {
+  descriptor: PairingDescriptor | null;
+  connectivityReady?: boolean;
+  transportMode?: TransportMode;
+}
+
+export const useRemotePairing = ({
+  descriptor,
+  connectivityReady = false,
+  transportMode = 'auto',
+}: UseRemotePairingOptions) => {
   const [state, setState] = useState<RemotePairingViewState>(INITIAL_STATE);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollingGeneration = useRef(0);
@@ -159,14 +168,35 @@ export const useRemotePairing = (
       });
       return;
     }
-    if (!connectivityReady) {
+
+    const isRelayMode = transportMode === 'relay';
+    const isAutoMode = transportMode === 'auto';
+
+    // Direct 模式或 auto 模式下需要 Tailscale 连通
+    if (!isRelayMode && !connectivityReady) {
       setState({
         ...INITIAL_STATE,
         phase: 'blocked',
-        message: 'Tailscale 联通尚未通过，未提交配对申请。',
+        message: isAutoMode
+          ? '等待网络连接中，请确保 Tailscale 或 Relay 可用。'
+          : 'Tailscale 联通尚未通过，未提交配对申请。',
       });
       return;
     }
+
+    // Relay 模式下检查 Relay 是否就绪
+    if (isRelayMode) {
+      const transport = remoteMiraHostClient.getTransport();
+      if (!transport || transport.type !== 'relay') {
+        setState({
+          ...INITIAL_STATE,
+          phase: 'blocked',
+          message: 'Relay 传输层未就绪，请配置 Relay 后重试。',
+        });
+        return;
+      }
+    }
+
     if (!remoteMiraHostClient.isSecureStorageAvailable()) {
       setState({
         ...INITIAL_STATE,
@@ -180,7 +210,9 @@ export const useRemotePairing = (
     setState({
       ...INITIAL_STATE,
       phase: 'claiming',
-      message: '正在向 Mira Desktop 提交设备申请。',
+      message: isRelayMode
+        ? '正在通过 Relay 向 Mira Desktop 提交设备申请。'
+        : '正在向 Mira Desktop 提交设备申请。',
     });
 
     try {
@@ -210,7 +242,7 @@ export const useRemotePairing = (
         message: error instanceof Error ? error.message : '提交配对申请失败',
       });
     }
-  }, [beginPolling, connectivityReady, descriptor, stopPolling]);
+  }, [beginPolling, connectivityReady, descriptor, stopPolling, transportMode]);
 
   return {
     state,
@@ -218,5 +250,6 @@ export const useRemotePairing = (
     reset,
     stopPolling,
     secureStorageAvailable: remoteMiraHostClient.isSecureStorageAvailable(),
+    isRelayMode: transportMode === 'relay',
   };
 };

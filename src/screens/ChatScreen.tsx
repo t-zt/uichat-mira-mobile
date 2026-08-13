@@ -18,7 +18,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ChevronLeft, MoreVertical, Send, Square } from 'lucide-react-native';
 import type { RootStackParamList } from '../types/navigation';
 import type { ChatMessage } from '../types';
-import { miraHostClient } from '../api/mockMiraHost';
+import { hostClient } from '../api/hostClientManager';
 import { useTheme } from '../theme/ThemeContext';
 import { fontSize, radius, shadows, sizing, spacing } from '../theme/tokens';
 import { AssistantMarkdown } from '../components/AssistantMarkdown';
@@ -99,7 +99,7 @@ export function ChatScreen() {
   const abortRef = useRef(false);
 
   useEffect(() => {
-    miraHostClient.getMessages(sessionId).then((msgs) => setMessages(msgs)).catch(() => {});
+    hostClient.getMessages(sessionId).then((msgs) => setMessages(msgs)).catch(() => {});
   }, [sessionId]);
 
   const scrollToBottom = useCallback(() => {
@@ -124,7 +124,7 @@ export function ChatScreen() {
       setMessages((prev) => [...prev, userMsg]);
 
       try {
-        const stream = await miraHostClient.sendMessage(sessionId, content);
+        const stream = await hostClient.sendMessage(sessionId, content);
         let fullReply = '';
         for await (const chunk of stream) {
           if (abortRef.current) break;

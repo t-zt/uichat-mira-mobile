@@ -18,7 +18,7 @@ import { Menu, MessageSquare, Pin, Settings as SettingsIcon, Trash2 } from 'luci
 import type { RootStackParamList } from '../types/navigation';
 import type { Session } from '../types';
 import { useHostStore } from '../store/hostStore';
-import { miraHostClient } from '../api/mockMiraHost';
+import { hostClient } from '../api/hostClientManager';
 import { useTheme } from '../theme/ThemeContext';
 import { fontSize, radius, sizing, spacing } from '../theme/tokens';
 import { CustomDrawer } from '../components/CustomDrawer';
@@ -214,7 +214,7 @@ export function SessionListScreen() {
 
   const loadSessions = useCallback(async () => {
     try {
-      const list = await miraHostClient.listSessions();
+      const list = await hostClient.listSessions();
       setSessions(list);
     } catch {}
   }, []);
@@ -238,7 +238,7 @@ export function SessionListScreen() {
     const target = renameTarget;
     setRenameTarget(null);
     try {
-      const updated = await miraHostClient.renameSession(target.id, title);
+      const updated = await hostClient.renameSession(target.id, title);
       setSessions((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
     } catch {}
   };
@@ -248,7 +248,7 @@ export function SessionListScreen() {
     setDeleteTarget(null);
     if (!target) return;
     try {
-      await miraHostClient.deleteSession(target.id);
+      await hostClient.deleteSession(target.id);
       setSessions((prev) => prev.filter((s) => s.id !== target.id));
     } catch {}
   };

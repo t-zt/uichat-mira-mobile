@@ -122,34 +122,55 @@ export class RemoteMiraHostClient {
     descriptor: PairingDescriptor,
     identity: MobileDeviceIdentity,
   ): Promise<PairingClaimResponse> {
+    const body = {
+      challengeId: descriptor.challengeId,
+      code: descriptor.code,
+      deviceName: normalizeDeviceName(identity.name),
+      platform: identity.platform ?? Platform.OS,
+      ...(identity.publicKey ? { publicKey: identity.publicKey } : {}),
+      ...(identity.requestedScopes
+        ? { requestedScopes: identity.requestedScopes }
+        : {}),
+    };
+
+    if (this.transport) {
+      return this.transport.request({
+        path: '/remote/pairing/claim',
+        method: 'POST',
+        body,
+        parse: parsePairingClaimResponse,
+      });
+    }
+
     return this.jsonTransport({
       hostUrl: descriptor.hostUrl,
       path: '/remote/pairing/claim',
       method: 'POST',
       allowInsecureDevelopment: __DEV__,
-      body: {
-        challengeId: descriptor.challengeId,
-        code: descriptor.code,
-        deviceName: normalizeDeviceName(identity.name),
-        platform: identity.platform ?? Platform.OS,
-        ...(identity.publicKey ? { publicKey: identity.publicKey } : {}),
-        ...(identity.requestedScopes
-          ? { requestedScopes: identity.requestedScopes }
-          : {}),
-      },
+      body,
       parse: parsePairingClaimResponse,
     });
   }
 
   async pollPairing(pending: PendingPairing): Promise<PairingPollResponse> {
-    const result = await this.jsonTransport({
-      hostUrl: pending.descriptor.hostUrl,
-      path: `/remote/pairing/claims/${encodeURIComponent(pending.claimId)}/poll`,
-      method: 'POST',
-      allowInsecureDevelopment: __DEV__,
-      body: { pollToken: pending.pollToken },
-      parse: parsePairingPollResponse,
-    });
+    const path = `/remote/pairing/claims/${encodeURIComponent(pending.claimId)}/poll`;
+    const body = { pollToken: pending.pollToken };
+
+    const result = this.transport
+      ? await this.transport.request({
+          path,
+          method: 'POST',
+          body,
+          parse: parsePairingPollResponse,
+        })
+      : await this.jsonTransport({
+          hostUrl: pending.descriptor.hostUrl,
+          path,
+          method: 'POST',
+          allowInsecureDevelopment: __DEV__,
+          body,
+          parse: parsePairingPollResponse,
+        });
 
     if (!result.credential) {
       return result;
@@ -322,6 +343,102 @@ export class RemoteMiraHostClient {
         credential: credential.credential,
         allowInsecureDevelopment: __DEV__,
         parse,
+      }),
+    );
+  }
+
+  async createThread(input: { title?: string; status?: string }): Promise<RemoteThread> {
+    const path = '/threads';
+    const parse = parseRemoteThread;
+    const body = {
+      title: input.title ?? 'New Thread',
+      status: input.status ?? 'active',
+    };
+
+    if (this.transport) {
+      return this.withCredential((credential) =>
+        this.transport!.request({
+          path,
+          method: 'POST',
+          credential: credential.credential,
+          body,
+          parse,
+        }),
+      );
+    }
+
+    return this.withCredential((credential) =>
+      this.jsonTransport({
+        hostUrl: credential.hostUrl,
+        path,
+        method: 'POST',
+        credential: credential.credential,
+        allowInsecureDevelopment: __DEV__,
+        body,
+        parse,
+      }),
+    );
+  }
+
+  async updateThread(threadId: string, input: { title?: string; status?: string }): Promise<RemoteThread> {
+    const path = `/threads/${encodeURIComponent(threadId)}`;
+    const parse = parseRemoteThread;
+    const body = {};
+    if (input.title !== undefined) {
+      (body as Record<string, string>).title = input.title;
+    }
+    if (input.status !== undefined) {
+      (body as Record<string, string>).status = input.status;
+    }
+
+    if (this.transport) {
+      return this.withCredential((credential) =>
+        this.transport!.request({
+          path,
+          method: 'PATCH',
+          credential: credential.credential,
+          body,
+          parse,
+        }),
+      );
+    }
+
+    return this.withCredential((credential) =>
+      this.jsonTransport({
+        hostUrl: credential.hostUrl,
+        path,
+        method: 'PATCH',
+        credential: credential.credential,
+        allowInsecureDevelopment: __DEV__,
+        body,
+        parse,
+      }),
+    );
+  }
+
+  async deleteThread(threadId: string): Promise<void> {
+    const path = `/threads/${encodeURIComponent(threadId)}`;
+
+    if (this.transport) {
+      await this.withCredential((credential) =>
+        this.transport!.request({
+          path,
+          method: 'DELETE',
+          credential: credential.credential,
+          parse: (value: unknown) => value as void,
+        }),
+      );
+      return;
+    }
+
+    await this.withCredential((credential) =>
+      this.jsonTransport({
+        hostUrl: credential.hostUrl,
+        path,
+        method: 'DELETE',
+        credential: credential.credential,
+        allowInsecureDevelopment: __DEV__,
+        parse: (value: unknown) => value as void,
       }),
     );
   }

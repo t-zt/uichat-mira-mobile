@@ -39,7 +39,7 @@ import {
   type PairingDescriptor,
 } from '../protocol/remoteHostV1';
 import { remoteMiraHostClient } from '../api/remoteMiraHost';
-import { useRemotePairing } from '../pairing/useRemotePairing';
+import { useRemotePairing, type TransportMode } from '../pairing/useRemotePairing';
 import { useTheme } from '../theme/ThemeContext';
 import { PairingScannerModal } from '../components/PairingScannerModal';
 
@@ -97,15 +97,23 @@ export function HostConfigScreen() {
   const routeChallenge = route.params?.challenge;
   const routeCode = route.params?.code;
 
+  const [transportMode, setTransportMode] = useState<TransportMode>('auto');
+
   const isProbing = connectivityState === 'probing';
   const isReady =
     connectivityState === 'ready' && connectivityResult?.hostUrl != null;
+
   const {
     state: pairingState,
     start: startPairing,
     reset: resetPairing,
     secureStorageAvailable,
-  } = useRemotePairing(pairingDescriptor, isReady);
+    isRelayMode,
+  } = useRemotePairing({
+    descriptor: pairingDescriptor,
+    connectivityReady: isReady,
+    transportMode,
+  });
 
   const loadPairingUri = useCallback(
     (uri: string) => {
@@ -205,9 +213,10 @@ export function HostConfigScreen() {
     pairingState.phase === 'claiming' ||
     pairingState.phase === 'waiting_approval';
   const pairingCompleted = pairingState.phase === 'paired';
+  const networkReady = isRelayMode ? true : isReady;
   const pairingActionDisabled =
     !pairingDescriptor ||
-    !isReady ||
+    !networkReady ||
     !secureStorageAvailable ||
     pairingBusy ||
     pairingCompleted;
@@ -215,7 +224,7 @@ export function HostConfigScreen() {
   const pairingTitle = (() => {
     switch (pairingState.phase) {
       case 'claiming':
-        return '正在提交设备申请';
+        return isRelayMode ? '正在通过 Relay 提交设备申请' : '正在提交设备申请';
       case 'waiting_approval':
         return '等待桌面确认';
       case 'paired':
@@ -228,10 +237,12 @@ export function HostConfigScreen() {
       case 'blocked':
         return '设备配对未完成';
       default:
-        return isReady
+        return networkReady
           ? pairingDescriptor
             ? '可以申请桌面批准'
             : '等待配对信息'
+          : isRelayMode
+          ? '等待 Relay 连接'
           : '等待连接';
     }
   })();
@@ -240,6 +251,8 @@ export function HostConfigScreen() {
     pairingState.message ??
     (!secureStorageAvailable
       ? '当前设备不支持安全存储，无法完成配对。'
+      : isRelayMode
+      ? 'Relay 模式下无需 Tailscale，提交申请后等待桌面批准即可。'
       : '连接成功后，还需要桌面端批准设备。');
 
   const handleBack = () => {
@@ -485,6 +498,70 @@ export function HostConfigScreen() {
                 </Text>
               ) : null}
 
+              {pairingState.phase === 'idle' || pairingState.phase === 'blocked' ? (
+                <View style={styles.transportSelector}>
+                  <Text style={[styles.transportLabel, { color: colors.text.muted }]}>
+                    传输方式
+                  </Text>
+                  <View style={styles.transportOptions}>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.transportOption,
+                        {
+                          borderColor: transportMode === 'auto' ? colors.primary : colors.border.default,
+                          backgroundColor: transportMode === 'auto' ? colors.bg.card : 'transparent',
+                        },
+                        pressed && { opacity: 0.7 },
+                      ]}
+                      onPress={() => setTransportMode('auto')}
+                    >
+                      <Text style={[
+                        styles.transportOptionText,
+                        { color: transportMode === 'auto' ? colors.primary : colors.text.muted },
+                      ]}>
+                        自动
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.transportOption,
+                        {
+                          borderColor: transportMode === 'direct' ? colors.primary : colors.border.default,
+                          backgroundColor: transportMode === 'direct' ? colors.bg.card : 'transparent',
+                        },
+                        pressed && { opacity: 0.7 },
+                      ]}
+                      onPress={() => setTransportMode('direct')}
+                    >
+                      <Text style={[
+                        styles.transportOptionText,
+                        { color: transportMode === 'direct' ? colors.primary : colors.text.muted },
+                      ]}>
+                        Direct
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.transportOption,
+                        {
+                          borderColor: transportMode === 'relay' ? colors.primary : colors.border.default,
+                          backgroundColor: transportMode === 'relay' ? colors.bg.card : 'transparent',
+                        },
+                        pressed && { opacity: 0.7 },
+                      ]}
+                      onPress={() => setTransportMode('relay')}
+                    >
+                      <Text style={[
+                        styles.transportOptionText,
+                        { color: transportMode === 'relay' ? colors.primary : colors.text.muted },
+                      ]}>
+                        Relay
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
+
               <Pressable
                 style={({ pressed }) => [
                   styles.pairBtn,
@@ -669,6 +746,32 @@ const styles = StyleSheet.create({
   pairingState: { marginTop: 16 },
   authorizationTitle: { fontSize: 16, fontWeight: '700', marginBottom: 8 },
   authorizationText: { fontSize: 13, lineHeight: 20 },
+  transportSelector: {
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  transportLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  transportOptions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  transportOption: {
+    flex: 1,
+    minHeight: 40,
+    borderWidth: 1,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  transportOptionText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
   pairBtn: {
     minHeight: 52,
     marginTop: 16,

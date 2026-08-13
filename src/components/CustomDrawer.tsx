@@ -26,7 +26,7 @@ import {
 import type { RootStackParamList } from '../types/navigation';
 import type { Session } from '../types';
 import { useTheme } from '../theme/ThemeContext';
-import { miraHostClient } from '../api/mockMiraHost';
+import { hostClient } from '../api/hostClientManager';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 const miraLogo = require('../../assets/branding/mira-logo-square.png');
@@ -60,7 +60,7 @@ export function CustomDrawer({ onClose }: CustomDrawerProps) {
 
   const loadSessions = useCallback(async () => {
     try {
-      const list = await miraHostClient.listSessions();
+      const list = await hostClient.listSessions();
       setSessions(list.slice(0, 20));
     } catch {}
     setLoading(false);
@@ -80,7 +80,7 @@ export function CustomDrawer({ onClose }: CustomDrawerProps) {
 
   const handleNewChat = async () => {
     try {
-      const session = await miraHostClient.createSession('新对话');
+      const session = await hostClient.createSession('新对话');
       setSessions((prev) => [session, ...prev]);
       onClose();
       navigation.navigate('Chat', {
