@@ -208,7 +208,7 @@ export class RelayRemoteTransport {
       type: 'hello',
       role: 'client',
       relayId: this.config.relayId,
-      clientToken: this.config.clientToken,
+      token: this.config.clientToken,
     };
     this.sendFrame(helloFrame);
   }

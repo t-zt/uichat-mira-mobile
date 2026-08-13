@@ -3,9 +3,10 @@ export const RELAY_PROTOCOL_VERSION = 1 as const;
 export type RelayHelloFrame = {
   version: 1;
   type: 'hello';
-  role: 'client';
+  role: 'host' | 'client';
   relayId: string;
-  clientToken: string;
+  token: string;
+  clientToken?: string;  // Host 首次连接时携带
 };
 
 export type RelayHelloAckFrame = {
