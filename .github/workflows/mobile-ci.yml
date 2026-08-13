@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - dev
+      - predev
       - test
       - prod
       - 'feature/**'
@@ -343,7 +344,7 @@ jobs:
       - android
       - android-release
       - ios
-    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/predev')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -432,7 +433,12 @@ jobs:
           done
 
           endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-          latest_prefix="mira/mobile/dev/latest"
+
+          if [[ "${GITHUB_REF}" == "refs/heads/predev" ]]; then
+            latest_prefix="mira/mobile/predev/latest"
+          else
+            latest_prefix="mira/mobile/dev/latest"
+          fi
 
           upload() {
             aws s3 sync release-assets/ "s3://${R2_BUCKET}/${latest_prefix}/" \
