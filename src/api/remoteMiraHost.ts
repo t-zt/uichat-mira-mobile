@@ -227,6 +227,12 @@ export class RemoteMiraHostClient {
     const stored: StoredDeviceCredential = {
       hostUrl: pending.descriptor.hostUrl,
       relay: pending.descriptor.relay,
+      endpoints: [
+        {
+          hostUrl: pending.descriptor.hostUrl,
+          relay: pending.descriptor.relay,
+        },
+      ].filter(ep => ep.hostUrl || ep.relay),
       credential: result.credential,
       deviceId: result.deviceId,
       scopes: result.scopes,

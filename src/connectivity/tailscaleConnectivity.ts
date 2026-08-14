@@ -132,8 +132,8 @@ const normalizeProbeHost = (
 };
 
 /**
- * Verify the complete mobile-to-desktop transport path before pairing:
- * system VPN routing -> MagicDNS -> TLS -> Tailscale Serve -> Mira Host.
+ * Verify the complete mobile-to-desktop Direct transport path before pairing:
+ * network routing -> DNS -> TLS -> Mira Host.
  *
  * Android prefers a native probe so DNS and TLS failures are not collapsed into
  * React Native's generic "Network request failed" error. Other platforms and
@@ -246,17 +246,17 @@ export const tailscaleConnectivityMessage = (
 ): string => {
   switch (state) {
     case 'ready':
-      return '已通过 Tailscale 连接到 Mira Host';
+      return '已通过 Direct 传输连接到 Mira Host';
     case 'invalid_host':
       return '主机地址无效';
     case 'dns_unreachable':
-      return 'MagicDNS 无法解析，请确认手机已连接正确的 Tailnet';
+      return 'DNS 无法解析，请确认主机地址正确且网络可达';
     case 'tls_failed':
-      return 'Tailscale Serve 的 HTTPS 证书校验失败';
+      return 'HTTPS 证书校验失败';
     case 'timeout':
-      return '连接超时，请检查 Tailscale、ACL 和桌面在线状态';
+      return '连接超时，请检查网络和桌面在线状态';
     case 'host_unreachable':
-      return '无法通过 Tailnet 访问桌面主机';
+      return '无法通过网络访问桌面主机';
     case 'not_mira_host':
       return '地址可达，但目标不是 Mira Host';
     case 'host_unhealthy':

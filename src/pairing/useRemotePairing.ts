@@ -183,8 +183,8 @@ export const useRemotePairing = ({
         ...INITIAL_STATE,
         phase: 'blocked',
         message: isAutoMode
-          ? '等待网络连接中，请确保 Tailscale 或 Relay 可用。'
-          : 'Tailscale 联通尚未通过，未提交配对申请。',
+          ? '等待网络连接中，请确保 Direct 或 Relay 可用。'
+          : 'Direct 联通尚未通过，未提交配对申请。',
       });
       return;
     }
@@ -244,7 +244,7 @@ export const useRemotePairing = ({
         message:
           claim.transport === 'relay'
             ? '已通过 Mira Relay 提交设备申请，等待桌面确认。'
-            : '已通过 Tailscale Direct 提交设备申请，等待桌面确认。',
+            : '已通过 Direct 传输提交设备申请，等待桌面确认。',
       });
       beginPolling(pending);
     } catch (error) {

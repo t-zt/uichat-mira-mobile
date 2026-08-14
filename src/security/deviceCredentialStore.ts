@@ -2,9 +2,16 @@ import { NativeModules } from 'react-native';
 import type { RemoteDeviceScope } from '../protocol/remoteHostV1';
 import type { RemoteRelayEndpoint } from '../protocol/remotePairingV1';
 
+export interface RemoteEndpoints {
+  hostUrl: string | null;
+  relay: RemoteRelayEndpoint | null;
+}
+
 export interface StoredDeviceCredential {
   hostUrl: string | null;
   relay: RemoteRelayEndpoint | null;
+  /** Historical endpoints collected during pairing attempts. Used for auto fallback. */
+  endpoints: RemoteEndpoints[];
   credential: string;
   deviceId: string;
   scopes: RemoteDeviceScope[];
@@ -62,6 +69,25 @@ const parseRelay = (value: unknown): RemoteRelayEndpoint | null => {
   };
 };
 
+const parseEndpoints = (value: unknown): RemoteEndpoints[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+      const record = item as Record<string, unknown>;
+      const hostUrl =
+        typeof record.hostUrl === 'string'
+          ? record.hostUrl
+          : record.hostUrl === null
+            ? null
+            : null;
+      const relay = parseRelay(record.relay);
+      if (!hostUrl && !relay) return null;
+      return { hostUrl, relay };
+    })
+    .filter((ep): ep is RemoteEndpoints => ep !== null);
+};
+
 const parseStoredCredential = (value: string): StoredDeviceCredential => {
   const parsed = JSON.parse(value) as unknown;
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -76,6 +102,7 @@ const parseStoredCredential = (value: string): StoredDeviceCredential => {
         ? null
         : null;
   const relay = parseRelay(record.relay);
+  const endpoints = parseEndpoints(record.endpoints);
 
   if (
     typeof record.credential !== 'string' ||
@@ -86,13 +113,14 @@ const parseStoredCredential = (value: string): StoredDeviceCredential => {
   ) {
     throw new Error('Stored Mira device credential is incomplete');
   }
-  if (!hostUrl && !relay) {
+  if (!hostUrl && !relay && endpoints.length === 0) {
     throw new Error('Stored Mira device credential has no remote endpoint');
   }
 
   return {
     hostUrl,
     relay,
+    endpoints,
     credential: record.credential,
     deviceId: record.deviceId,
     scopes: record.scopes as RemoteDeviceScope[],
@@ -147,6 +175,10 @@ export class MemoryDeviceCredentialStore implements DeviceCredentialStore {
     this.value = {
       ...value,
       relay: value.relay ? { ...value.relay } : null,
+      endpoints: value.endpoints.map(ep => ({
+        hostUrl: ep.hostUrl,
+        relay: ep.relay ? { ...ep.relay } : null,
+      })),
       scopes: [...value.scopes],
     };
   }

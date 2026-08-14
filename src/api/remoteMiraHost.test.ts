@@ -127,6 +127,12 @@ describe('RemoteMiraHostClient transport selection', () => {
     await store.save({
       hostUrl: 'https://mira.example.ts.net',
       relay,
+      endpoints: [
+        {
+          hostUrl: 'https://mira.example.ts.net',
+          relay,
+        },
+      ],
       credential: 'mira_device_device-1.secret',
       deviceId: 'device-1',
       scopes: ['threads:read'],
@@ -165,6 +171,12 @@ describe('RemoteMiraHostClient transport selection', () => {
     await store.save({
       hostUrl: 'https://mira.example.ts.net',
       relay,
+      endpoints: [
+        {
+          hostUrl: 'https://mira.example.ts.net',
+          relay,
+        },
+      ],
       credential: 'mira_device_device-1.secret',
       deviceId: 'device-1',
       scopes: ['threads:read'],

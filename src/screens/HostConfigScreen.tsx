@@ -50,9 +50,9 @@ const connectivityTitle = (state: TailscaleConnectivityState) => {
     case 'probing':
       return '正在检查连接';
     case 'ready':
-      return 'Tailscale Direct 已联通';
+      return 'Direct 传输已联通';
     default:
-      return 'Direct 联通失败';
+      return 'Direct 传输联通失败';
   }
 };
 
@@ -196,11 +196,11 @@ export function HostConfigScreen() {
   const statusMessage = useMemo(() => {
     if (connectivityState === 'idle') {
       return hasDirectEndpoint
-        ? '已获得 Direct endpoint，等待检查 Tailscale 传输。'
+        ? '已获得 Direct endpoint，等待检查传输层连通性。'
         : '当前配对请求没有 Direct endpoint；如果包含 Mira Relay，可直接通过 Relay 配对。';
     }
     if (connectivityState === 'probing') {
-      return '正在检查 Tailscale / HTTPS / Mira Host 是否可达。';
+      return '正在检查 Direct 传输 / HTTPS / Mira Host 是否可达。';
     }
     return tailscaleConnectivityMessage(connectivityState);
   }, [connectivityState, hasDirectEndpoint]);
@@ -245,10 +245,10 @@ export function HostConfigScreen() {
     (!secureStorageAvailable
       ? '当前设备不支持安全存储，无法完成配对。'
       : isRelayMode
-      ? 'Relay 模式下无需 Tailscale，提交申请后等待桌面批准即可。'
+      ? 'Relay 模式下无需 Direct 传输，提交申请后等待桌面批准即可。'
       : pairingDescriptor
         ? `可用连接：${[
-            hasDirectEndpoint ? 'Tailscale Direct' : null,
+            hasDirectEndpoint ? 'Direct 传输' : null,
             hasRelayEndpoint ? 'Mira Relay' : null,
           ]
             .filter(Boolean)
@@ -323,7 +323,7 @@ export function HostConfigScreen() {
             </View>
             <Text style={[styles.heroTitle, { color: colors.text.ink }]}>设备配对</Text>
             <Text style={[styles.heroSubtitle, { color: colors.text.muted }]}> 
-              同一个设备身份，可通过 Tailscale Direct 或 Mira Relay 连接桌面端。
+              同一设备身份，可通过 Direct 或 Mira Relay 连接桌面端。
             </Text>
           </View>
 
@@ -375,7 +375,7 @@ export function HostConfigScreen() {
           <View style={[styles.card, { backgroundColor: colors.bg.card }]}>
             <View style={styles.sectionHeading}>
               <Wifi size={20} color={colors.text.ink} />
-              <Text style={[styles.sectionTitle, { color: colors.text.ink }]}>Tailscale Direct</Text>
+              <Text style={[styles.sectionTitle, { color: colors.text.ink }]}>Direct 传输</Text>
             </View>
 
             <Text style={[styles.label, { color: colors.text.muted }]}>Mira Host 地址</Text>
@@ -393,7 +393,7 @@ export function HostConfigScreen() {
                 setHostUrl(value);
                 setConnectivityHostUrl(value);
               }}
-              placeholder="https://mira-desktop.tailnet-name.ts.net"
+              placeholder="https://mira-desktop.local"
               placeholderTextColor={colors.text.placeholder}
               autoCapitalize="none"
               autoCorrect={false}
@@ -516,7 +516,7 @@ export function HostConfigScreen() {
                 <RefreshCw size={18} color={colors.primary} />
               )}
               <Text style={[styles.secondaryBtnText, { color: colors.primary }]}> 
-                {isProbing ? '正在检查' : '重新检查 Direct'}
+                {isProbing ? '正在检查' : '重新检查连接'}
               </Text>
             </Pressable>
           </View>
