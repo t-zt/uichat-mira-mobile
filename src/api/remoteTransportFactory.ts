@@ -101,8 +101,7 @@ export class RemoteTransportFactory {
         const transport = new RelayRemoteTransport(config);
         const adapted = new RelayAdaptedTransport(transport);
         await transport.connect();
-        const state = await transport.probe();
-        if (state === 'connected') {
+        if (transport.getState() === 'connected') {
           this.relayTransport = transport;
           this.relayAdaptedTransport = adapted;
           return adapted;
