@@ -80,18 +80,6 @@ export function CustomDrawer({ onClose }: CustomDrawerProps) {
     });
   };
 
-  const handleNewChat = async () => {
-    try {
-      const session = await hostClient.createSession('新对话');
-      setSessions((prev) => [session, ...prev]);
-      onClose();
-      navigation.navigate('Chat', {
-        sessionId: session.id,
-        title: session.title,
-      });
-    } catch {}
-  };
-
   const handleOpenRemoteConnection = () => {
     onClose();
     navigation.navigate('HostConfig');

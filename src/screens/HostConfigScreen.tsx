@@ -96,11 +96,6 @@ export function HostConfigScreen() {
   const [pairingLinkError, setPairingLinkError] = useState<string | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
 
-  const routeVersion = route.params?.version;
-  const routeHost = route.params?.host;
-  const routeChallenge = route.params?.challenge;
-  const routeCode = route.params?.code;
-
   const [transportMode, setTransportMode] = useState<TransportMode>('auto');
 
   const isProbing = connectivityState === 'probing';
@@ -108,7 +103,6 @@ export function HostConfigScreen() {
     connectivityState === 'ready' && connectivityResult?.hostUrl != null;
   const hasDirectEndpoint = Boolean(pairingDescriptor?.hostUrl);
   const hasRelayEndpoint = Boolean(pairingDescriptor?.relay);
-  const isPairingTransportReady = isDirectReady || hasRelayEndpoint;
   const hasTransportError =
     connectivityState !== 'idle' &&
     connectivityState !== 'probing' &&

@@ -68,6 +68,9 @@ export class RemoteTransportFactory {
 
   private async createDirectTransport(credential: StoredDeviceCredential): Promise<DirectRemoteTransport> {
     if (!this.directTransport) {
+      if (!credential.hostUrl) {
+        throw new Error('No direct host URL available for direct transport');
+      }
       this.directTransport = new DirectRemoteTransport(
         credential.hostUrl,
         requestRemoteJson,

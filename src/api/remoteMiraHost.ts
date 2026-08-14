@@ -646,7 +646,7 @@ export class RemoteMiraHostClient {
       return this.transport.request({
         path: '/remote/v1/manifest',
         method: 'GET',
-        credential,
+        credential: credential.credential,
         parse: parseRemoteManifest,
       });
     }
