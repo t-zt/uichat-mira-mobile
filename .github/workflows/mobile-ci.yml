@@ -110,7 +110,7 @@ jobs:
       - quality
     if: >-
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-      (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/prod')
+      (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/predev' || github.ref == 'refs/heads/prod')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
