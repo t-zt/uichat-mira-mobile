@@ -143,6 +143,7 @@ jobs:
     name: iOS simulator and unsigned device builds
     needs:
       - quality
+    if: ${{ github.ref != 'refs/heads/predev' }}
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -267,7 +268,6 @@ jobs:
     needs:
       - quality
       - android
-      - ios
     runs-on: ubuntu-latest
     steps:
       - name: Download build artifacts
@@ -284,9 +284,6 @@ jobs:
             uichat-mira-mobile-dev.apk
             uichat-mira-mobile-release.apk
             uichat-mira-mobile-release.apk.sha256
-            uichat-mira-mobile-ios-simulator.zip
-            uichat-mira-mobile-ios-unsigned-device.ipa
-            uichat-mira-mobile-ios-unsigned-device.ipa.sha256
           )
           for name in "${required[@]}"; do
             test -s "release-assets/$name"
@@ -294,9 +291,6 @@ jobs:
           (
             cd release-assets
             sha256sum -c uichat-mira-mobile-release.apk.sha256
-            sha256sum -c uichat-mira-mobile-ios-unsigned-device.ipa.sha256
-            unzip -tq uichat-mira-mobile-ios-simulator.zip
-            unzip -tq uichat-mira-mobile-ios-unsigned-device.ipa
             find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -printf '%f\0' \
               | sort -z \
               | xargs -0 sha256sum > SHA256SUMS.txt
@@ -368,5 +362,4 @@ jobs:
             echo "### Cloudflare R2"
             echo "Predev: ${public_base}/${latest_prefix}/"
             echo "Android: ${public_base}/${latest_prefix}/uichat-mira-mobile-release.apk"
-            echo "iOS unsigned IPA: ${public_base}/${latest_prefix}/uichat-mira-mobile-ios-unsigned-device.ipa"
           } >> "$GITHUB_STEP_SUMMARY"
