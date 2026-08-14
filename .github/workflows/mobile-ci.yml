@@ -195,7 +195,7 @@ jobs:
 
   ios:
     name: iOS simulator and unsigned device builds
-    if: github.ref != 'refs/heads/predev'
+    if: ${{ github.ref != 'refs/heads/predev' }}
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -510,15 +510,15 @@ Unsigned iOS IPA: ${public_base}/${latest_prefix}/uichat-mira-mobile-ios-unsigne
           short_sha=${GITHUB_SHA::7}
 
           if [[ "${GITHUB_REF}" == "refs/heads/predev" ]]; then
-            cat > release-notes.md <<EOF
-            Automated development build from branch \`predev\`.
-
-            - Version: \`$PACKAGE_VERSION\`
-            - Commit: \`$GITHUB_SHA\`
-            - CI run: \`$GITHUB_RUN_ID\`
-            - Android: debug APK and signed release APK
-            - R2 mirror: \`${{ secrets.R2_PUBLIC_BASE_URL }}/mira/mobile/predev/latest/\`
-            EOF
+            {
+              echo "Automated development build from branch \`predev\`."
+              echo ""
+              echo "- Version: \`$PACKAGE_VERSION\`"
+              echo "- Commit: \`$GITHUB_SHA\`"
+              echo "- CI run: \`$GITHUB_RUN_ID\`"
+              echo "- Android: debug APK and signed release APK"
+              echo "- R2 mirror: \`${{ secrets.R2_PUBLIC_BASE_URL }}/mira/mobile/predev/latest/\`"
+            } > release-notes.md
           else
             cat > release-notes.md <<EOF
             Automated development build from branch \`dev\`.
