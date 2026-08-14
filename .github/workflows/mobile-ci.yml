@@ -495,13 +495,18 @@ jobs:
           fi
 
           public_base="${R2_PUBLIC_BASE_URL%/}"
-          summary_lines="### Cloudflare R2
-Latest: ${public_base}/${latest_prefix}/"
-          if [[ "${GITHUB_REF}" != "refs/heads/predev" ]]; then
-            summary_lines="${summary_lines}
-Unsigned iOS IPA: ${public_base}/${latest_prefix}/uichat-mira-mobile-ios-unsigned-device.ipa"
+          if [[ "${GITHUB_REF}" == "refs/heads/predev" ]]; then
+            {
+              echo "### Cloudflare R2"
+              echo "Latest: ${public_base}/${latest_prefix}/"
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### Cloudflare R2"
+              echo "Latest: ${public_base}/${latest_prefix}/"
+              echo "Unsigned iOS IPA: ${public_base}/${latest_prefix}/uichat-mira-mobile-ios-unsigned-device.ipa"
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
-          echo "$summary_lines" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish rolling dev release
         env:
@@ -510,27 +515,23 @@ Unsigned iOS IPA: ${public_base}/${latest_prefix}/uichat-mira-mobile-ios-unsigne
           short_sha=${GITHUB_SHA::7}
 
           if [[ "${GITHUB_REF}" == "refs/heads/predev" ]]; then
-            {
-              echo "Automated development build from branch \`predev\`."
-              echo ""
-              echo "- Version: \`$PACKAGE_VERSION\`"
-              echo "- Commit: \`$GITHUB_SHA\`"
-              echo "- CI run: \`$GITHUB_RUN_ID\`"
-              echo "- Android: debug APK and signed release APK"
-              echo "- R2 mirror: \`${{ secrets.R2_PUBLIC_BASE_URL }}/mira/mobile/predev/latest/\`"
-            } > release-notes.md
+            echo "Automated development build from branch \`predev\`." > release-notes.md
+            echo "" >> release-notes.md
+            echo "- Version: \`$PACKAGE_VERSION\`" >> release-notes.md
+            echo "- Commit: \`$GITHUB_SHA\`" >> release-notes.md
+            echo "- CI run: \`$GITHUB_RUN_ID\`" >> release-notes.md
+            echo "- Android: debug APK and signed release APK" >> release-notes.md
+            echo "- R2 mirror: \`${{ secrets.R2_PUBLIC_BASE_URL }}/mira/mobile/predev/latest/\`" >> release-notes.md
           else
-            cat > release-notes.md <<EOF
-            Automated development build from branch \`dev\`.
-
-            - Version: \`$PACKAGE_VERSION\`
-            - Commit: \`$GITHUB_SHA\`
-            - CI run: \`$GITHUB_RUN_ID\`
-            - Android: debug APK and signed release APK
-            - iOS Simulator: unsigned app archive
-            - iOS device: unsigned arm64 IPA for local Windows signing and sideloading
-            - R2 mirror: \`${{ secrets.R2_PUBLIC_BASE_URL }}/mira/mobile/dev/latest/\`
-            EOF
+            echo "Automated development build from branch \`dev\`." > release-notes.md
+            echo "" >> release-notes.md
+            echo "- Version: \`$PACKAGE_VERSION\`" >> release-notes.md
+            echo "- Commit: \`$GITHUB_SHA\`" >> release-notes.md
+            echo "- CI run: \`$GITHUB_RUN_ID\`" >> release-notes.md
+            echo "- Android: debug APK and signed release APK" >> release-notes.md
+            echo "- iOS Simulator: unsigned app archive" >> release-notes.md
+            echo "- iOS device: unsigned arm64 IPA for local Windows signing and sideloading" >> release-notes.md
+            echo "- R2 mirror: \`${{ secrets.R2_PUBLIC_BASE_URL }}/mira/mobile/dev/latest/\`" >> release-notes.md
           fi
 
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
