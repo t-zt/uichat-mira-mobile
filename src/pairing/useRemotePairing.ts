@@ -6,9 +6,9 @@ import {
 } from '../api/remoteMiraHost';
 import {
   REMOTE_DEVICE_SCOPES,
-  type PairingDescriptor,
   type RemoteDeviceScope,
 } from '../protocol/remoteHostV1';
+import type { PairingDescriptorV1 } from '../protocol/remotePairingV1';
 
 export type RemotePairingPhase =
   | 'idle'
@@ -41,7 +41,7 @@ const INITIAL_STATE: RemotePairingViewState = {
 const POLL_INTERVAL_MS = 1_500;
 
 export interface UseRemotePairingOptions {
-  descriptor: PairingDescriptor | null;
+  descriptor: PairingDescriptorV1 | null;
   connectivityReady?: boolean;
   transportMode?: TransportMode;
 }
@@ -70,7 +70,13 @@ export const useRemotePairing = ({
 
   useEffect(() => {
     reset();
-  }, [descriptor?.challengeId, descriptor?.hostUrl, reset]);
+  }, [
+    descriptor?.challengeId,
+    descriptor?.hostUrl,
+    descriptor?.relay?.endpoint,
+    descriptor?.relay?.relayId,
+    reset,
+  ]);
 
   useEffect(() => stopPolling, [stopPolling]);
 
@@ -133,7 +139,7 @@ export const useRemotePairing = ({
             return;
           }
 
-          setState((current) => ({
+          setState(current => ({
             ...current,
             phase: 'waiting_approval',
             pending,
@@ -172,7 +178,6 @@ export const useRemotePairing = ({
     const isRelayMode = transportMode === 'relay';
     const isAutoMode = transportMode === 'auto';
 
-    // Direct 模式或 auto 模式下需要 Tailscale 连通
     if (!isRelayMode && !connectivityReady) {
       setState({
         ...INITIAL_STATE,
@@ -207,6 +212,7 @@ export const useRemotePairing = ({
     }
 
     stopPolling();
+    const generation = pollingGeneration.current;
     setState({
       ...INITIAL_STATE,
       phase: 'claiming',
@@ -221,8 +227,11 @@ export const useRemotePairing = ({
         platform: Platform.OS,
         requestedScopes: [...REMOTE_DEVICE_SCOPES],
       });
+      if (generation !== pollingGeneration.current) return;
+
       const pending: PendingPairing = {
         descriptor,
+        transport: claim.transport,
         claimId: claim.claimId,
         pollToken: claim.pollToken,
         expiresAt: claim.expiresAt,
@@ -232,10 +241,14 @@ export const useRemotePairing = ({
         pending,
         deviceId: null,
         scopes: [],
-        message: '已向桌面提交设备申请，等待桌面确认。',
+        message:
+          claim.transport === 'relay'
+            ? '已通过 Mira Relay 提交设备申请，等待桌面确认。'
+            : '已通过 Tailscale Direct 提交设备申请，等待桌面确认。',
       });
       beginPolling(pending);
     } catch (error) {
+      if (generation !== pollingGeneration.current) return;
       setState({
         ...INITIAL_STATE,
         phase: 'error',

@@ -1,5 +1,6 @@
-import React, { useState, useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
+  FlatList,
   Image,
   Platform,
   Pressable,
@@ -7,21 +8,19 @@ import {
   StyleSheet,
   Text,
   View,
-  FlatList,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
-  Search,
-  Image as ImageIcon,
+  Clock,
   FolderKanban,
   FolderOpen,
-  Monitor,
-  Clock,
   Grid3x3,
+  Image as ImageIcon,
+  Monitor,
   Pin,
-  Plus,
+  Search,
 } from 'lucide-react-native';
 import type { RootStackParamList } from '../types/navigation';
 import type { Session } from '../types';
@@ -40,7 +39,8 @@ interface CategoryItem {
 const categories: CategoryItem[] = [
   { id: 'images', label: '图片', icon: ImageIcon },
   { id: 'files', label: '文件库', icon: FolderKanban },
-  { id: 'projects', label: '项目', icon: FolderOpen },
+  // Product term “项目” maps to the Desktop Host Chat Workspace domain.
+  { id: 'workspaces', label: '项目', icon: FolderOpen },
   { id: 'remote', label: 'Remote', icon: Monitor },
   { id: 'planned', label: '已计划', icon: Clock },
   { id: 'plugins', label: '插件', icon: Grid3x3 },
@@ -49,7 +49,6 @@ const categories: CategoryItem[] = [
 interface CustomDrawerProps {
   onClose: () => void;
 }
-
 
 export function CustomDrawer({ onClose }: CustomDrawerProps) {
   const navigation = useNavigation<NavProp>();
@@ -62,12 +61,15 @@ export function CustomDrawer({ onClose }: CustomDrawerProps) {
     try {
       const list = await hostClient.listSessions();
       setSessions(list.slice(0, 20));
-    } catch {}
-    setLoading(false);
+    } catch {
+      // Connection state and authorization are surfaced elsewhere.
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   React.useEffect(() => {
-    loadSessions();
+    void loadSessions();
   }, [loadSessions]);
 
   const handleOpenSession = (session: Session) => {
@@ -95,7 +97,6 @@ export function CustomDrawer({ onClose }: CustomDrawerProps) {
     navigation.navigate('HostConfig');
   };
 
-
   return (
     <View
       style={[
@@ -107,23 +108,29 @@ export function CustomDrawer({ onClose }: CustomDrawerProps) {
         },
       ]}
     >
-      {/* ── Header: Avatar + Actions ────────────── */}
       <View style={styles.header}>
         <View style={styles.brandMark}>
           <Image source={miraLogo} style={styles.brandLogo} />
-          <Text style={[styles.brandTitle, { color: colors.text.ink }]} numberOfLines={1}>
+          <Text
+            style={[styles.brandTitle, { color: colors.text.ink }]}
+            numberOfLines={1}
+          >
             UIChat Mira
           </Text>
         </View>
         <View style={styles.headerActions}>
-          <Pressable style={styles.headerBtn} onPress={() => navigation.navigate('Search')} accessibilityRole="button" accessibilityLabel="搜索会话">
+          <Pressable
+            style={styles.headerBtn}
+            onPress={() => navigation.navigate('Search')}
+            accessibilityRole="button"
+            accessibilityLabel="搜索会话"
+          >
             <Search size={22} color={colors.text.muted} />
           </Pressable>
         </View>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* ── Categories ──────────────────────── */}
         <View style={styles.categories}>
           {categories.map((cat) => (
             <Pressable
@@ -134,7 +141,9 @@ export function CustomDrawer({ onClose }: CustomDrawerProps) {
               ]}
               onPress={cat.id === 'remote' ? handleOpenRemoteConnection : undefined}
               accessibilityRole={cat.id === 'remote' ? 'button' : undefined}
-              accessibilityLabel={cat.id === 'remote' ? 'Remote connection' : undefined}
+              accessibilityLabel={
+                cat.id === 'remote' ? 'Remote connection' : undefined
+              }
             >
               <cat.icon size={22} color={colors.text.muted} />
               <Text style={[styles.categoryLabel, { color: colors.text.base }]}>
@@ -144,17 +153,11 @@ export function CustomDrawer({ onClose }: CustomDrawerProps) {
           ))}
         </View>
 
-        {/* ── Pinned Section ──────────────────── */}
-        {sessions.length > 0 && (
+        {sessions.length > 0 ? (
           <>
-            <Text style={[styles.sectionLabel, { color: colors.text.soft }]}>
-              已置顶
-            </Text>
+            <Text style={[styles.sectionLabel, { color: colors.text.soft }]}>已置顶</Text>
             <Pressable
-              style={[
-                styles.pinnedItem,
-                { backgroundColor: colors.bg.card },
-              ]}
+              style={[styles.pinnedItem, { backgroundColor: colors.bg.card }]}
               onPress={() => handleOpenSession(sessions[0])}
             >
               <Pin size={18} color={colors.primary} />
@@ -166,14 +169,11 @@ export function CustomDrawer({ onClose }: CustomDrawerProps) {
               </Text>
             </Pressable>
           </>
-        )}
+        ) : null}
 
-        {/* ── Recent Section ──────────────────── */}
-        {sessions.length > 1 && (
+        {sessions.length > 1 ? (
           <>
-            <Text style={[styles.sectionLabel, { color: colors.text.soft }]}>
-              最近
-            </Text>
+            <Text style={[styles.sectionLabel, { color: colors.text.soft }]}>最近</Text>
             <FlatList
               data={sessions.slice(1)}
               keyExtractor={(item) => item.id}
@@ -195,41 +195,33 @@ export function CustomDrawer({ onClose }: CustomDrawerProps) {
                 </Pressable>
               )}
               ItemSeparatorComponent={() => (
-                <View style={[styles.separator, { backgroundColor: colors.border.soft }]} />
+                <View
+                  style={[
+                    styles.separator,
+                    { backgroundColor: colors.border.soft },
+                  ]}
+                />
               )}
             />
           </>
-        )}
+        ) : null}
 
-        {loading && sessions.length === 0 && (
-          <Text style={[styles.emptyHint, { color: colors.text.soft }]}>
-            加载中...
-          </Text>
-        )}
+        {loading && sessions.length === 0 ? (
+          <Text style={[styles.emptyHint, { color: colors.text.soft }]}>加载中...</Text>
+        ) : null}
       </ScrollView>
 
-      {/* ── Bottom: New Chat + Avatar ───────── */}
-      <View style={[styles.bottomBar, { borderTopColor: colors.border.soft }]}>
-        <Pressable
-          style={[
-            styles.newChatBtn,
-            { backgroundColor: colors.primary },
-          ]}
-          onPress={handleNewChat}
-        >
-          <Plus size={20} color="#fff" strokeWidth={2.5} />
-          <Text style={styles.newChatLabel}>聊天</Text>
-        </Pressable>
+      <View style={[styles.remoteNote, { borderTopColor: colors.border.soft }]}>
+        <Text style={[styles.remoteNoteText, { color: colors.text.soft }]}>
+          当前远程协议只访问桌面端已有会话
+        </Text>
       </View>
-
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  drawer: {
-    flex: 1,
-  },
+  drawer: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -245,23 +237,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
-  brandLogo: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-  },
+  brandLogo: { width: 28, height: 28, borderRadius: 14 },
   brandTitle: {
     flexShrink: 1,
-    fontFamily: Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' }),
+    fontFamily: Platform.select({
+      ios: 'Georgia',
+      android: 'serif',
+      default: 'serif',
+    }),
     fontSize: 20,
     fontWeight: '600',
     letterSpacing: 0,
   },
-  headerActions: {
-    flexDirection: 'row',
-    flexShrink: 0,
-    gap: 4,
-  },
+  headerActions: { flexDirection: 'row', flexShrink: 0, gap: 4 },
   headerBtn: {
     width: 36,
     height: 36,
@@ -269,9 +257,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  content: {
-    flex: 1,
-  },
+  content: { flex: 1 },
   categories: {
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -285,10 +271,7 @@ const styles = StyleSheet.create({
     gap: 14,
     borderRadius: 10,
   },
-  categoryLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
+  categoryLabel: { fontSize: 16, fontWeight: '500' },
   sectionLabel: {
     fontSize: 13,
     fontWeight: '600',
@@ -305,48 +288,15 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     gap: 12,
   },
-  pinnedLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    flex: 1,
-  },
-  recentItem: {
+  pinnedLabel: { fontSize: 15, fontWeight: '600', flex: 1 },
+  recentItem: { paddingHorizontal: 20, paddingVertical: 14 },
+  recentLabel: { fontSize: 15 },
+  separator: { height: StyleSheet.hairlineWidth, marginLeft: 20 },
+  emptyHint: { textAlign: 'center', marginTop: 40, fontSize: 14 },
+  remoteNote: {
+    borderTopWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 20,
     paddingVertical: 14,
   },
-  recentLabel: {
-    fontSize: 15,
-  },
-  separator: {
-    height: StyleSheet.hairlineWidth,
-    marginLeft: 20,
-  },
-  emptyHint: {
-    textAlign: 'center',
-    marginTop: 40,
-    fontSize: 14,
-  },
-  bottomBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    gap: 12,
-  },
-  newChatBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 24,
-    gap: 8,
-    flex: 1,
-    justifyContent: 'center',
-  },
-  newChatLabel: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '600',
-  },
+  remoteNoteText: { fontSize: 12, lineHeight: 18, textAlign: 'center' },
 });

@@ -1,6 +1,20 @@
 # GitHub Actions 构建与发布
 
-本文说明 `uichat-mira-mobile` 的 GitHub Actions 构建、签名、版本 Tag、GitHub Release 和 Cloudflare R2 发布流程。实际执行定义以 [`.github/workflows/mobile-ci.yml`](../.github/workflows/mobile-ci.yml) 为准。
+本文说明 `uichat-mira-mobile` 的 GitHub Actions 构建、签名、版本 Tag、GitHub Release 和 Cloudflare R2 发布流程。实际执行定义以 [`.github/workflows/mobile-ci.yml`](../.github/workflows/mobile-ci.yml) 与 [`.github/workflows/predev-ci.yml`](../.github/workflows/predev-ci.yml) 为准。
+
+## 分支构建约定
+
+当前采用简单的预开发缓冲流程：
+
+```text
+feature/* / fix/* -> predev -> dev
+```
+
+- `predev`：给多人合并后的移动端构建与安装验证使用。推送到该分支后自动执行完整 Android / iOS 构建，并把产物上传到 R2 的 `mira/mobile/predev/latest/`。
+- `dev`：开发预发布渠道，继续维护现有 GitHub prerelease、Tag 与 `mira/mobile/dev/latest/`。
+- `test` / `prod`：保持现有用途，不由 `predev` 改写其发布语义。
+
+`predev` 不创建或移动 `dev` 的 Tag，不更新 `dev` GitHub prerelease，也不会写入 `mira/mobile/dev/latest/`。它只作为进入 `dev` 前的构建缓冲层。
 
 ## 触发条件
 
@@ -8,6 +22,11 @@
 
 - Pull Request。
 - 推送到 `main`、`dev`、`test`、`prod`、`feature/**` 或 `fix/**`。
+- 维护者手动触发 `workflow_dispatch`。
+
+`Predev CI` 在以下情况执行：
+
+- 推送到 `predev`。
 - 维护者手动触发 `workflow_dispatch`。
 
 同一分支只保留最新运行；新提交会取消该分支仍在执行的旧运行。
@@ -21,7 +40,7 @@
 | Android signed release APK | Ubuntu | 正式签名、内置 JS Bundle、SVG 原生库、APK 完整性和签名 | `uichat-mira-mobile-release.apk`、SHA-256 |
 | iOS simulator and unsigned device builds | macOS | CocoaPods、无签名 Simulator Debug、无签名 `iphoneos` Release、`arm64`、JS Bundle、IPA 结构与无 provisioning profile | Simulator ZIP、unsigned device IPA、SHA-256 |
 
-iOS 两类构建复用同一个 macOS Job，避免重复安装 Node、Ruby、CocoaPods 和依赖。签名 Android Release 只在 `dev`、`prod` 推送或对应分支手动运行时执行。发布 Job 必须等待质量检查及各平台构建全部成功。
+iOS 两类构建复用同一个 macOS Job，避免重复安装 Node、Ruby、CocoaPods 和依赖。`Mobile CI` 的签名 Android Release 只在 `dev`、`prod` 推送或对应分支手动运行时执行；`predev` 的签名 Android Release 由独立 `Predev CI` 执行。发布 Job 必须等待质量检查及各平台构建全部成功。
 
 ## iOS unsigned device 验证状态
 
@@ -43,6 +62,7 @@ iOS 两类构建复用同一个 macOS Job，避免重复安装 Node、Ruby、Coc
 - Android `versionName` 直接读取 `package.json.version`。
 - `dev` 预发布 Tag 为 `v<version>-dev`，例如 `v0.1.2-dev`。
 - `prod` 正式 Tag 为 `v<version>`，例如 `v0.1.2`。
+- `predev` 不创建版本 Tag；它只提供滚动构建产物。
 - 正式 Tag 已指向其他提交时，发布必须失败并要求先升级 `package.json.version`。
 - Android `versionCode` 和 iOS build number 是独立递增的构建编号，不作为语义版本来源。
 
@@ -50,10 +70,20 @@ iOS 两类构建复用同一个 macOS Job，避免重复安装 Node、Ruby、Coc
 
 | 环境 | GitHub Release | R2 固定目录 |
 | --- | --- | --- |
+| predev | 无，使用 Actions Artifact | `mira/mobile/predev/latest/` |
 | dev | `v<version>-dev` 预发布 | `mira/mobile/dev/latest/` |
 | prod | `v<version>` 正式发布 | `mira/mobile/prod/latest/` |
 
 GitHub Tag 表示具体版本，R2 的 `latest` 路径表示环境渠道。两者用途不同：Tag 可追溯，R2 地址供客户端或测试人员始终下载该环境最新成功产物。
+
+当前 predev 固定地址：
+
+```text
+https://assets.tomz.io/mira/mobile/predev/latest/uichat-mira-mobile-release.apk
+https://assets.tomz.io/mira/mobile/predev/latest/uichat-mira-mobile-ios-unsigned-device.ipa
+https://assets.tomz.io/mira/mobile/predev/latest/uichat-mira-mobile-ios-unsigned-device.ipa.sha256
+https://assets.tomz.io/mira/mobile/predev/latest/SHA256SUMS.txt
+```
 
 当前 dev 固定地址：
 
@@ -65,6 +95,15 @@ https://assets.tomz.io/mira/mobile/dev/latest/SHA256SUMS.txt
 ```
 
 unsigned device IPA 不能直接安装。Windows 侧载流程见 [iOS 免费真机侧载](ios-free-sideload-windows.md)。
+
+## predev R2 规则
+
+`Predev CI` 在 Android、iOS 和质量检查全部成功后，将本次构建产物汇总并上传到 `mira/mobile/predev/latest/`。
+
+- 上传前生成 `SHA256SUMS.txt`。
+- R2 上传失败时工作流失败。
+- `predev` 不写 `dev/latest`，不创建或修改任何 Release Tag。
+- 测试人员只需要合并或推送到 `predev`，然后使用固定 R2 地址下载最新成功构建。
 
 ## dev 发布完整性与 R2 容错
 
@@ -93,7 +132,7 @@ R2 dev 上传采用以下容错规则：
 
 不使用 `--delete` 的代价是废弃文件可能暂时留在 `latest` 目录。当前产物文件名固定，这比网络抖动时误删最后一份可下载产物更安全。清理废弃文件应由显式维护任务完成，不和日常发布耦合。
 
-生产 R2 仍沿用原有 Android-only 发布逻辑；本次 unsigned device IPA 只进入 `dev` 渠道。
+生产 R2 仍沿用原有 Android-only 发布逻辑；本次 unsigned device IPA 只进入 `dev` 和 `predev` 渠道。
 
 ## 必需 Secrets
 
@@ -187,6 +226,6 @@ Android 设备安装通用 APK 时只会使用与本机 CPU 匹配的一套原�
 4. APK 中存在 `assets/index.android.bundle` 和预期原生库。
 5. `apksigner verify`、Android SHA-256 与 iOS IPA SHA-256 校验成功。
 6. unsigned device IPA 包含 `arm64` 和 `main.jsbundle`，且不包含 provisioning profile。
-7. GitHub Release Tag、目标提交和版本一致。
-8. R2 固定地址可下载，远端文件大小与本次产物一致。
+7. GitHub Release Tag、目标提交和版本一致（`predev` 不适用）。
+8. 对应环境的 R2 固定地址可下载，远端文件大小与本次产物一致。
 9. 在宣称真机可用前，必须完成真实 iPhone 的签名、安装、启动和核心功能回归。

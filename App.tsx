@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'react-native';
 import {
   NavigationContainer,
@@ -17,6 +17,9 @@ import { AboutScreen } from './src/screens/AboutScreen';
 import { LicenseScreen } from './src/screens/LicenseScreen';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { TailscaleConnectivityLifecycle } from './src/connectivity/TailscaleConnectivityLifecycle';
+import { remoteMiraHostClient } from './src/api/remoteMiraHost';
+import { deviceCredentialStore } from './src/security/deviceCredentialStore';
+import { useHostStore } from './src/store/hostStore';
 import type { RootStackParamList } from './src/types/navigation';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -40,10 +43,68 @@ function StatusBarThemed() {
 }
 
 function AppInner() {
+  const [bootstrapChecked, setBootstrapChecked] = useState(false);
+  const [hasDeviceCredential, setHasDeviceCredential] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const bootstrapRemoteHost = async () => {
+      try {
+        if (!remoteMiraHostClient.isSecureStorageAvailable()) {
+          if (!cancelled) {
+            setHasDeviceCredential(false);
+            useHostStore.getState().setConnectionStatus('disconnected');
+          }
+          return;
+        }
+
+        const stored = await deviceCredentialStore.load();
+        if (cancelled) return;
+        if (!stored) {
+          setHasDeviceCredential(false);
+          useHostStore.getState().setConnectionStatus('disconnected');
+          return;
+        }
+
+        setHasDeviceCredential(true);
+        try {
+          const restored = await remoteMiraHostClient.restoreConnection();
+          if (cancelled) return;
+
+          const connected = restored != null;
+          setHasDeviceCredential(connected);
+          useHostStore
+            .getState()
+            .setConnectionStatus(connected ? 'connected' : 'disconnected');
+        } catch {
+          if (cancelled) return;
+
+          // Direct or Relay may be temporarily unreachable. The paired-device
+          // credential remains valid unless the Host explicitly returns 401/403.
+          setHasDeviceCredential(true);
+          useHostStore.getState().setConnectionStatus('reconnecting');
+        }
+      } finally {
+        if (!cancelled) setBootstrapChecked(true);
+      }
+    };
+
+    void bootstrapRemoteHost();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!bootstrapChecked) return null;
+
   return (
     <>
       <TailscaleConnectivityLifecycle />
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Navigator
+        initialRouteName={hasDeviceCredential ? 'SessionList' : 'HostConfig'}
+        screenOptions={{ headerShown: false }}
+      >
         <Stack.Screen name="SessionList" component={SessionListScreen} />
         <Stack.Screen name="Chat" component={ChatScreen} />
         <Stack.Screen name="HostConfig" component={HostConfigScreen} />

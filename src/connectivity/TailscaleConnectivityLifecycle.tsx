@@ -8,7 +8,7 @@ import { subscribeToSystemNetworkChanges } from './systemNetworkMonitor';
 /**
  * Keeps the observable Mobile -> Tailscale -> Mira Host transport state fresh.
  * It never clears device credentials on transport failures; authorization is a
- * separate layer and is validated only after connectivity becomes ready.
+ * separate layer and is validated through Remote Host V1 manifest checks.
  */
 export function TailscaleConnectivityLifecycle() {
   const configuredHostUrl = useHostStore((state) => state.config?.hostUrl ?? '');
@@ -137,7 +137,16 @@ export function TailscaleConnectivityLifecycle() {
         })
         .catch(() => {
           if (cancelled) return;
-          useHostStore.getState().setConnectionStatus('disconnected');
+
+          // Network failure is not device revocation. restoreConnection clears
+          // the device credential only for 401/403, so preserve reconnecting
+          // while a credential still exists.
+          void remoteMiraHostClient.getStoredHostUrl().then((storedHostUrl) => {
+            if (cancelled) return;
+            useHostStore
+              .getState()
+              .setConnectionStatus(storedHostUrl ? 'reconnecting' : 'disconnected');
+          });
         });
 
       return () => {

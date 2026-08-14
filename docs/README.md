@@ -3,11 +3,15 @@
 ## 工程与发布
 
 - [GitHub Actions 构建与发布](github-build-release.md)
+- [依赖安全技术债务](dependency-security-debt.md)
 
 ## 当前工程主线
 
+- [Mobile API 接入清单与排期](remote-access/mobile-api-rollout-plan.md)
 - [Tailscale Connectivity V1 合同](remote-access/tailscale-connectivity-v1.md)
 - [Tailscale 联通工程进度](remote-access/tailscale-connectivity-progress.md)
+
+Mobile 新能力必须以 Mira 主项目 `dev` 的 canonical Remote contract 为真相源。接口排期文档用于记录当前手机端视觉能力对应的 Host API、接入优先级和阻塞条件，不扩大设备凭证权限。
 
 当前由 `feature/tomz-tailscale` 接管 Mira Mobile 与 Mira Desktop Host 的 Tailscale 联通、生命周期恢复、深链配对和设备授权。主链代码已经落地，但尚未完成本地构建、自动化测试和 Android / iOS 真机验收。
 

@@ -192,9 +192,9 @@ export const openPostSse = <T>(request: PostSseRequest<T>): PostSseSession<T> =>
 
   const complete = () => {
     if (settled) return;
+    settled = true;
     try {
       decoder.finish().forEach((event) => queue.push(event));
-      settled = true;
       queue.close();
     } catch (error) {
       fail(error);
@@ -216,7 +216,8 @@ export const openPostSse = <T>(request: PostSseRequest<T>): PostSseSession<T> =>
       const responseText = xhr.responseText ?? '';
       const chunk = responseText.slice(processedLength);
       processedLength = responseText.length;
-      decoder.feed(chunk).forEach((event) => queue.push(event));
+      const events = decoder.feed(chunk);
+      events.forEach(event => queue.push(event));
     } catch (error) {
       xhr.abort();
       fail(error);
@@ -235,7 +236,8 @@ export const openPostSse = <T>(request: PostSseRequest<T>): PostSseSession<T> =>
       const responseText = xhr.responseText ?? '';
       const chunk = responseText.slice(processedLength);
       processedLength = responseText.length;
-      decoder.feed(chunk).forEach((event) => queue.push(event));
+      const events = decoder.feed(chunk);
+      events.forEach(event => queue.push(event));
       complete();
     } catch (error) {
       fail(error);

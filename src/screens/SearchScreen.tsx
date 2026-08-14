@@ -17,14 +17,21 @@ import { hostClient } from '../api/hostClientManager';
 import { useTheme } from '../theme/ThemeContext';
 import { fontSize, radius, sizing, spacing } from '../theme/tokens';
 
-const tabs = ['全部', '对话', '图片', '文档', '项目'] as const;
-type SearchTab = (typeof tabs)[number];
+const tabs = [
+  { id: 'all', label: '全部', implemented: true },
+  { id: 'conversations', label: '对话', implemented: true },
+  { id: 'images', label: '图片', implemented: false },
+  { id: 'documents', label: '文档', implemented: false },
+  // Product term “项目” maps to the Desktop Host Chat Workspace domain.
+  { id: 'workspaces', label: '项目', implemented: false },
+] as const;
+type SearchTab = (typeof tabs)[number]['id'];
 
 export function SearchScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { colors } = useTheme();
   const [query, setQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<SearchTab>('全部');
+  const [activeTab, setActiveTab] = useState<SearchTab>('all');
   const [sessions, setSessions] = useState<Session[]>([]);
 
   const loadSessions = useCallback(async () => {
@@ -49,29 +56,33 @@ export function SearchScreen() {
     navigation.navigate('Chat', { sessionId: session.id, title: session.title });
   };
 
-  const isImplementedTab = activeTab === '全部' || activeTab === '对话';
+  const isImplementedTab = activeTab === 'all' || activeTab === 'conversations';
 
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: colors.bg.canvas }]} edges={['top', 'bottom']}>
       <View style={[styles.tabs, { borderBottomColor: colors.border.soft }]}>
-        {tabs.map((tab) => {
-          const implemented = tab === '全部' || tab === '对话';
-          return (
-            <Pressable
-              key={tab}
+        {tabs.map((tab) => (
+          <Pressable
+            key={tab.id}
+            style={[
+              styles.tab,
+              activeTab === tab.id && { backgroundColor: colors.bg.soft },
+              !tab.implemented && styles.placeholderTab,
+            ]}
+            onPress={tab.implemented ? () => setActiveTab(tab.id) : undefined}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: activeTab === tab.id, disabled: !tab.implemented }}
+          >
+            <Text
               style={[
-                styles.tab,
-                activeTab === tab && { backgroundColor: colors.bg.soft },
-                !implemented && styles.placeholderTab,
+                styles.tabLabel,
+                { color: activeTab === tab.id ? colors.text.ink : colors.text.muted },
               ]}
-              onPress={implemented ? () => setActiveTab(tab) : undefined}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: activeTab === tab, disabled: !implemented }}
             >
-              <Text style={[styles.tabLabel, { color: activeTab === tab ? colors.text.ink : colors.text.muted }]}>{tab}</Text>
-            </Pressable>
-          );
-        })}
+              {tab.label}
+            </Text>
+          </Pressable>
+        ))}
       </View>
 
       <ScrollView contentContainerStyle={styles.results} keyboardShouldPersistTaps="handled">
