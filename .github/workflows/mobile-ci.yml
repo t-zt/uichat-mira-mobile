@@ -195,6 +195,7 @@ jobs:
 
   ios:
     name: iOS simulator and unsigned device builds
+    if: github.ref != 'refs/heads/predev'
     runs-on: macos-latest
     steps:
       - name: Checkout
@@ -343,7 +344,6 @@ jobs:
       - quality
       - android
       - android-release
-      - ios
     if: github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/predev')
     runs-on: ubuntu-latest
     permissions:
@@ -372,14 +372,22 @@ jobs:
         run: |
           set -euo pipefail
 
-          required=(
-            uichat-mira-mobile-dev.apk
-            uichat-mira-mobile-release.apk
-            uichat-mira-mobile-release.apk.sha256
-            uichat-mira-mobile-ios-simulator.zip
-            uichat-mira-mobile-ios-unsigned-device.ipa
-            uichat-mira-mobile-ios-unsigned-device.ipa.sha256
-          )
+          if [[ "${GITHUB_REF}" == "refs/heads/predev" ]]; then
+            required=(
+              uichat-mira-mobile-dev.apk
+              uichat-mira-mobile-release.apk
+              uichat-mira-mobile-release.apk.sha256
+            )
+          else
+            required=(
+              uichat-mira-mobile-dev.apk
+              uichat-mira-mobile-release.apk
+              uichat-mira-mobile-release.apk.sha256
+              uichat-mira-mobile-ios-simulator.zip
+              uichat-mira-mobile-ios-unsigned-device.ipa
+              uichat-mira-mobile-ios-unsigned-device.ipa.sha256
+            )
+          fi
 
           for name in "${required[@]}"; do
             if [ ! -s "release-assets/$name" ]; then
@@ -391,9 +399,11 @@ jobs:
           (
             cd release-assets
             sha256sum -c uichat-mira-mobile-release.apk.sha256
-            sha256sum -c uichat-mira-mobile-ios-unsigned-device.ipa.sha256
-            unzip -tq uichat-mira-mobile-ios-simulator.zip
-            unzip -tq uichat-mira-mobile-ios-unsigned-device.ipa
+            if [ -f uichat-mira-mobile-ios-unsigned-device.ipa.sha256 ]; then
+              sha256sum -c uichat-mira-mobile-ios-unsigned-device.ipa.sha256
+              unzip -tq uichat-mira-mobile-ios-simulator.zip
+              unzip -tq uichat-mira-mobile-ios-unsigned-device.ipa
+            fi
           )
 
       - name: Generate checksums
@@ -485,11 +495,13 @@ jobs:
           fi
 
           public_base="${R2_PUBLIC_BASE_URL%/}"
-          {
-            echo "### Cloudflare R2"
-            echo "Latest: ${public_base}/${latest_prefix}/"
-            echo "Unsigned iOS IPA: ${public_base}/${latest_prefix}/uichat-mira-mobile-ios-unsigned-device.ipa"
-          } >> "$GITHUB_STEP_SUMMARY"
+          summary_lines="### Cloudflare R2
+Latest: ${public_base}/${latest_prefix}/"
+          if [[ "${GITHUB_REF}" != "refs/heads/predev" ]]; then
+            summary_lines="${summary_lines}
+Unsigned iOS IPA: ${public_base}/${latest_prefix}/uichat-mira-mobile-ios-unsigned-device.ipa"
+          fi
+          echo "$summary_lines" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish rolling dev release
         env:
@@ -497,17 +509,29 @@ jobs:
         run: |
           short_sha=${GITHUB_SHA::7}
 
-          cat > release-notes.md <<EOF
-          Automated development build from branch \`dev\`.
+          if [[ "${GITHUB_REF}" == "refs/heads/predev" ]]; then
+            cat > release-notes.md <<EOF
+            Automated development build from branch \`predev\`.
 
-          - Version: \`$PACKAGE_VERSION\`
-          - Commit: \`$GITHUB_SHA\`
-          - CI run: \`$GITHUB_RUN_ID\`
-          - Android: debug APK and signed release APK
-          - iOS Simulator: unsigned app archive
-          - iOS device: unsigned arm64 IPA for local Windows signing and sideloading
-          - R2 mirror: \`${{ secrets.R2_PUBLIC_BASE_URL }}/mira/mobile/dev/latest/\`
-          EOF
+            - Version: \`$PACKAGE_VERSION\`
+            - Commit: \`$GITHUB_SHA\`
+            - CI run: \`$GITHUB_RUN_ID\`
+            - Android: debug APK and signed release APK
+            - R2 mirror: \`${{ secrets.R2_PUBLIC_BASE_URL }}/mira/mobile/predev/latest/\`
+            EOF
+          else
+            cat > release-notes.md <<EOF
+            Automated development build from branch \`dev\`.
+
+            - Version: \`$PACKAGE_VERSION\`
+            - Commit: \`$GITHUB_SHA\`
+            - CI run: \`$GITHUB_RUN_ID\`
+            - Android: debug APK and signed release APK
+            - iOS Simulator: unsigned app archive
+            - iOS device: unsigned arm64 IPA for local Windows signing and sideloading
+            - R2 mirror: \`${{ secrets.R2_PUBLIC_BASE_URL }}/mira/mobile/dev/latest/\`
+            EOF
+          fi
 
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release edit "$RELEASE_TAG" \
