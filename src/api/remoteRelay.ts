@@ -11,6 +11,7 @@ import {
 
 const RELAY_PROTOCOL_VERSION = 1;
 const HANDSHAKE_TIMEOUT_MS = 10_000;
+const REQUEST_TIMEOUT_MS = 30_000;
 const BASE64_ALPHABET =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
@@ -419,9 +420,26 @@ class RelayConnection {
       );
     }
 
+    try {
+      return await this.requestJsonOnce(request);
+    } catch (error) {
+      if (
+        error instanceof RemoteHostError &&
+        (error.code === 'RELAY_REQUEST_TIMEOUT' ||
+          error.code === 'RELAY_DISCONNECTED')
+      ) {
+        await this.reconnect();
+        return this.requestJsonOnce(request);
+      }
+      throw error;
+    }
+  }
+
+  private async requestJsonOnce<T>(request: RemoteJsonRequest<T>): Promise<T> {
     const requestId = this.nextRequestId();
     const signal = request.signal;
     let abortListener: (() => void) | null = null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     const promise = new Promise<T>((resolve, reject) => {
       const pending: JsonPending<T> = {
@@ -438,6 +456,7 @@ class RelayConnection {
       abortListener = () => {
         if (!this.pending.has(requestId)) return;
         this.pending.delete(requestId);
+        if (timeoutId) clearTimeout(timeoutId);
         this.send({ version: 1, type: 'cancel', requestId });
         reject(
           new RemoteHostError(
@@ -447,6 +466,23 @@ class RelayConnection {
         );
       };
       signal?.addEventListener('abort', abortListener, { once: true });
+
+      const rejectTimeout = () => {
+        if (!this.pending.has(requestId)) return;
+        this.pending.delete(requestId);
+        if (abortListener) {
+          signal?.removeEventListener('abort', abortListener);
+        }
+        this.send({ version: 1, type: 'cancel', requestId });
+        reject(
+          new RemoteHostError(
+            'RELAY_REQUEST_TIMEOUT',
+            'Mira Relay request timed out',
+          ),
+        );
+      };
+
+      timeoutId = setTimeout(rejectTimeout, REQUEST_TIMEOUT_MS);
 
       const sent = this.send({
         version: 1,
@@ -467,6 +503,7 @@ class RelayConnection {
             }),
       });
       if (!sent) {
+        if (timeoutId) clearTimeout(timeoutId);
         signal?.removeEventListener('abort', abortListener);
         this.pending.delete(requestId);
         reject(
@@ -479,6 +516,7 @@ class RelayConnection {
     });
 
     return promise.finally(() => {
+      if (timeoutId) clearTimeout(timeoutId);
       if (abortListener) {
         signal?.removeEventListener('abort', abortListener);
       }
@@ -563,6 +601,20 @@ class RelayConnection {
       // Socket may already be closed.
     }
     this.onClose?.();
+  }
+
+  private async reconnect(): Promise<void> {
+    if (this.socket) {
+      try {
+        this.socket.close(1012, 'Mira Mobile reconnect');
+      } catch {
+        // Socket may already be closed.
+      }
+    }
+    this.socket = null;
+    this.connectPromise = null;
+    this.stopHandshakeTimer();
+    await this.ensureConnectedWithTimeout(HANDSHAKE_TIMEOUT_MS);
   }
 
   private ensureConnected(): Promise<void> {
