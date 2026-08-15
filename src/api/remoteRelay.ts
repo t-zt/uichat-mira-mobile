@@ -15,6 +15,54 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const BASE64_ALPHABET =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
+type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+const RELAY_LOG_ENABLED = __DEV__;
+
+function logRelay(
+  level: LogLevel,
+  message: string,
+  details?: unknown,
+): void {
+  if (!RELAY_LOG_ENABLED) return;
+  const tag = '[Relay]';
+  switch (level) {
+    case 'debug':
+      if (details === undefined) console.log(`${tag} ${message}`);
+      else console.log(`${tag} ${message}`, details);
+      break;
+    case 'info':
+      if (details === undefined) console.info(`${tag} ${message}`);
+      else console.info(`${tag} ${message}`, details);
+      break;
+    case 'warn':
+      if (details === undefined) console.warn(`${tag} ${message}`);
+      else console.warn(`${tag} ${message}`, details);
+      break;
+    case 'error':
+      if (details === undefined) console.error(`${tag} ${message}`);
+      else console.error(`${tag} ${message}`, details);
+      break;
+  }
+}
+
+const truncate = (value: string, max = 40) =>
+  value.length <= max ? value : `${value.slice(0, max)}…`;
+
+const relaySummary = (relay: RemoteRelayEndpoint) =>
+  `${relay.endpoint} rid=${truncate(relay.relayId, 16)}`;
+
+const frameSummary = (frame: Record<string, unknown>) => {
+  const parts: string[] = [String(frame.type ?? '?')];
+  if ('requestId' in frame) parts.push(`req=${truncate(String(frame.requestId), 16)}`);
+  if ('status' in frame) parts.push(`status=${frame.status}`);
+  if ('path' in frame) parts.push(`path=${String(frame.path)}`);
+  if ('method' in frame) parts.push(`method=${String(frame.method)}`);
+  if ('error' in frame) parts.push(`code=${String(frame.error)}`);
+  if ('code' in frame && frame.type === 'error') parts.push(`code=${String(frame.code)}`);
+  return parts.join(' ');
+};
+
 interface RelayResponseFrame {
   version: 1;
   type: 'response';
@@ -409,11 +457,15 @@ class RelayConnection {
   constructor(
     private readonly relay: RemoteRelayEndpoint,
     private readonly onClose?: () => void,
-  ) {}
+  ) {
+    logRelay('debug', `create ${relaySummary(relay)}`);
+  }
 
   async requestJson<T>(request: RemoteJsonRequest<T>): Promise<T> {
+    logRelay('debug', `requestJson begin ${request.method ?? 'GET'} ${request.path}`);
     await this.ensureConnected();
     if (request.signal?.aborted) {
+      logRelay('warn', 'requestJson aborted before send');
       throw new RemoteHostError(
         'REQUEST_ABORTED',
         'Mira Host request was cancelled',
@@ -421,13 +473,18 @@ class RelayConnection {
     }
 
     try {
-      return await this.requestJsonOnce(request);
+      const result = await this.requestJsonOnce(request);
+      logRelay('debug', `requestJson ok ${request.method ?? 'GET'} ${request.path}`);
+      return result;
     } catch (error) {
+      const code = error instanceof RemoteHostError ? error.code : 'unknown';
+      logRelay('warn', `requestJson fail ${request.method ?? 'GET'} ${request.path} code=${code}`);
       if (
         error instanceof RemoteHostError &&
         (error.code === 'RELAY_REQUEST_TIMEOUT' ||
           error.code === 'RELAY_DISCONNECTED')
       ) {
+        logRelay('info', 'requestJson triggering reconnect + retry');
         await this.reconnect();
         return this.requestJsonOnce(request);
       }
@@ -440,6 +497,8 @@ class RelayConnection {
     const signal = request.signal;
     let abortListener: (() => void) | null = null;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    logRelay('debug', `requestJsonOnce start id=${truncate(requestId, 12)} ${request.method ?? 'GET'} ${request.path}`);
 
     const promise = new Promise<T>((resolve, reject) => {
       const pending: JsonPending<T> = {
@@ -455,6 +514,7 @@ class RelayConnection {
 
       abortListener = () => {
         if (!this.pending.has(requestId)) return;
+        logRelay('info', `requestJsonOnce abort id=${truncate(requestId, 12)}`);
         this.pending.delete(requestId);
         if (timeoutId) clearTimeout(timeoutId);
         this.send({ version: 1, type: 'cancel', requestId });
@@ -469,6 +529,10 @@ class RelayConnection {
 
       const rejectTimeout = () => {
         if (!this.pending.has(requestId)) return;
+        logRelay(
+          'error',
+          `requestJsonOnce TIMEOUT id=${truncate(requestId, 12)} after ${REQUEST_TIMEOUT_MS}ms`,
+        );
         this.pending.delete(requestId);
         if (abortListener) {
           signal?.removeEventListener('abort', abortListener);
@@ -503,6 +567,10 @@ class RelayConnection {
             }),
       });
       if (!sent) {
+        logRelay(
+          'error',
+          `requestJsonOnce SEND-FAIL id=${truncate(requestId, 12)} socket.readyState=${this.socket?.readyState}`,
+        );
         if (timeoutId) clearTimeout(timeoutId);
         signal?.removeEventListener('abort', abortListener);
         this.pending.delete(requestId);
@@ -588,6 +656,7 @@ class RelayConnection {
   }
 
   close() {
+    logRelay('info', `close ${relaySummary(this.relay)}`);
     this.failAll(
       new RemoteHostError('RELAY_DISCONNECTED', 'Mira Relay connection closed'),
     );
@@ -604,6 +673,7 @@ class RelayConnection {
   }
 
   private async reconnect(): Promise<void> {
+    logRelay('info', `reconnect tearing down old socket ${relaySummary(this.relay)}`);
     if (this.socket) {
       try {
         this.socket.close(1012, 'Mira Mobile reconnect');
@@ -614,7 +684,9 @@ class RelayConnection {
     this.socket = null;
     this.connectPromise = null;
     this.stopHandshakeTimer();
+    logRelay('info', 'reconnect initiating new handshake');
     await this.ensureConnectedWithTimeout(HANDSHAKE_TIMEOUT_MS);
+    logRelay('info', 'reconnect new handshake ok');
   }
 
   private ensureConnected(): Promise<void> {
@@ -625,9 +697,16 @@ class RelayConnection {
   }
 
   ensureConnectedWithTimeout(timeoutMs: number): Promise<void> {
-    if (this.socket?.readyState === 1) return Promise.resolve();
-    if (this.connectPromise) return this.connectPromise;
+    if (this.socket?.readyState === 1) {
+      logRelay('debug', `ensureConnected: reuse existing socket for ${relaySummary(this.relay)}`);
+      return Promise.resolve();
+    }
+    if (this.connectPromise) {
+      logRelay('debug', `ensureConnected: join in-flight handshake for ${relaySummary(this.relay)}`);
+      return this.connectPromise;
+    }
 
+    logRelay('info', `ensureConnected: opening new WebSocket for ${relaySummary(this.relay)}`);
     const connectPromise = new Promise<void>((resolve, reject) => {
       this.resolveConnect = resolve;
       this.rejectConnect = reject;
@@ -636,8 +715,11 @@ class RelayConnection {
 
     let socket: WebSocket;
     try {
-      socket = new WebSocket(buildSocketUrl(this.relay));
+      const url = buildSocketUrl(this.relay);
+      logRelay('debug', `ensureConnected: WebSocket url=${url}`);
+      socket = new WebSocket(url);
     } catch (error) {
+      logRelay('error', 'ensureConnected: WebSocket constructor threw', error);
       this.finishConnectFailure(
         new RemoteHostError(
           'RELAY_NETWORK_ERROR',
@@ -652,6 +734,7 @@ class RelayConnection {
 
     socket.onopen = () => {
       if (this.socket !== socket) return;
+      logRelay('info', `ensureConnected: socket onopen, sending hello for ${relaySummary(this.relay)}`);
       this.send({
         version: 1,
         type: 'hello',
@@ -661,6 +744,7 @@ class RelayConnection {
       });
       this.handshakeTimer = setTimeout(() => {
         if (this.socket !== socket || !this.connectPromise) return;
+        logRelay('error', `ensureConnected: handshake TIMEOUT after ${timeoutMs}ms for ${relaySummary(this.relay)}`);
         this.finishConnectFailure(
           new RemoteHostError(
             'RELAY_HANDSHAKE_TIMEOUT',
@@ -694,6 +778,8 @@ class RelayConnection {
         return;
       }
       const record = raw as Record<string, unknown>;
+      logRelay('debug', `← ${frameSummary(record)}`);
+
       if (record.type === 'hello_ack') {
         if (
           record.version !== 1 ||
@@ -701,9 +787,11 @@ class RelayConnection {
           record.relayId !== this.relay.relayId ||
           record.protocolVersion !== 1
         ) {
+          logRelay('error', 'hello_ack validation failed', record);
           this.failProtocol('Mira Relay hello acknowledgement is invalid');
           return;
         }
+        logRelay('info', `ensureConnected: hello_ack OK for ${relaySummary(this.relay)}`);
         this.stopHandshakeTimer();
         const resolve = this.resolveConnect;
         this.resolveConnect = null;
@@ -723,6 +811,7 @@ class RelayConnection {
 
     socket.onerror = () => {
       if (this.socket !== socket) return;
+      logRelay('error', `ensureConnected: socket onerror for ${relaySummary(this.relay)}`);
       if (this.connectPromise) {
         this.finishConnectFailure(
           new RemoteHostError(
@@ -735,6 +824,10 @@ class RelayConnection {
 
     socket.onclose = event => {
       if (this.socket !== socket) return;
+      logRelay(
+        'warn',
+        `socket onclose code=${event.code} reason="${event.reason || ''}" for ${relaySummary(this.relay)}`,
+      );
       this.socket = null;
       this.stopHandshakeTimer();
       const reason = event.reason || 'Mira Relay connection closed';
@@ -751,6 +844,7 @@ class RelayConnection {
 
   private handleFrame(frame: RelayInboundFrame) {
     if (frame.type === 'error' && !frame.requestId) {
+      logRelay('error', `← error-frame (no requestId) code=${frame.code} msg=${frame.message}`);
       if (this.connectPromise) {
         this.finishConnectFailure(
           new RemoteHostError(
@@ -767,9 +861,13 @@ class RelayConnection {
     const requestId = frame.requestId;
     if (!requestId) return;
     const pending = this.pending.get(requestId);
-    if (!pending) return;
+    if (!pending) {
+      logRelay('warn', `← frame for unknown requestId=${truncate(requestId, 16)} type=${frame.type}`);
+      return;
+    }
 
     if (frame.type === 'error') {
+      logRelay('warn', `← error-frame req=${truncate(requestId, 16)} code=${frame.code} msg=${frame.message}`);
       this.pending.delete(requestId);
       const error = new RemoteHostError(
         `RELAY_${frame.code}`,
@@ -783,6 +881,7 @@ class RelayConnection {
     }
 
     if (frame.type === 'response') {
+      logRelay('debug', `← response req=${truncate(requestId, 16)} status=${frame.status}`);
       pending.status = frame.status;
       if (pending.kind === 'sse' && pending.pendingChunks.length > 0) {
         this.flushSseChunks(requestId, pending, pending.pendingChunks);
@@ -796,6 +895,7 @@ class RelayConnection {
       try {
         bytes = base64Decode(frame.data);
       } catch (error) {
+        logRelay('error', `← chunk decode error req=${truncate(requestId, 16)}`, error);
         this.pending.delete(requestId);
         if (pending.kind === 'json') pending.reject(error);
         else pending.queue.fail(error);
@@ -819,6 +919,7 @@ class RelayConnection {
 
     // parseInboundFrame already rejects every unknown frame type, so reaching
     // this point means the frame is the validated `complete` variant.
+    logRelay('debug', `← complete req=${truncate(requestId, 16)}`);
     this.pending.delete(requestId);
     if (pending.kind === 'json') {
       this.completeJson(pending);
@@ -953,16 +1054,26 @@ class RelayConnection {
 
   private send(frame: Record<string, unknown>) {
     const socket = this.socket;
-    if (!socket || socket.readyState !== 1) return false;
+    if (!socket || socket.readyState !== 1) {
+      logRelay(
+        'error',
+        `SEND-FAIL no socket (readyState=${socket?.readyState}) frame=${frameSummary(frame)}`,
+      );
+      return false;
+    }
     try {
-      socket.send(JSON.stringify(frame));
+      const serialized = JSON.stringify(frame);
+      logRelay('debug', `→ ${frameSummary(frame)}`);
+      socket.send(serialized);
       return true;
-    } catch {
+    } catch (error) {
+      logRelay('error', `SEND-THROW frame=${frameSummary(frame)}`, error);
       return false;
     }
   }
 
   private failProtocol(message: string) {
+    logRelay('error', `failProtocol: ${message}`);
     const error = new RemoteHostError('RELAY_PROTOCOL_ERROR', message);
     if (this.connectPromise) this.finishConnectFailure(error);
     this.failAll(error);
@@ -974,6 +1085,8 @@ class RelayConnection {
   }
 
   private finishConnectFailure(error: unknown) {
+    const code = error instanceof RemoteHostError ? error.code : 'unknown';
+    logRelay('error', `finishConnectFailure code=${code}`, error instanceof Error ? error.message : error);
     this.stopHandshakeTimer();
     const reject = this.rejectConnect;
     this.resolveConnect = null;
@@ -989,6 +1102,11 @@ class RelayConnection {
   }
 
   private failAll(error: unknown) {
+    const count = this.pending.size;
+    if (count > 0) {
+      const code = error instanceof RemoteHostError ? error.code : 'unknown';
+      logRelay('warn', `failAll: failing ${count} pending requests with code=${code}`);
+    }
     for (const pending of this.pending.values()) {
       if (pending.kind === 'json') pending.reject(error);
       else pending.queue.fail(error);
@@ -1003,10 +1121,14 @@ const connectionFor = (relay: RemoteRelayEndpoint) => {
   const key = `${relay.endpoint}\n${relay.relayId}\n${relay.token}`;
   let connection = connections.get(key);
   if (!connection) {
+    logRelay('debug', `connectionFor: creating new connection for ${relaySummary(relay)}`);
     connection = new RelayConnection(relay, () => {
+      logRelay('debug', `connectionFor: evicting connection for ${relaySummary(relay)}`);
       connections.delete(key);
     });
     connections.set(key, connection);
+  } else {
+    logRelay('debug', `connectionFor: reusing existing connection for ${relaySummary(relay)}`);
   }
   return connection;
 };
@@ -1014,14 +1136,24 @@ const connectionFor = (relay: RemoteRelayEndpoint) => {
 export const requestRelayJson = <T>(
   relay: RemoteRelayEndpoint,
   request: RemoteJsonRequest<T>,
-) => connectionFor(relay).requestJson(request);
+) => {
+  logRelay(
+    'debug',
+    `requestRelayJson ${request.method ?? 'GET'} ${request.path}`,
+  );
+  return connectionFor(relay).requestJson(request);
+};
 
 export const openRelayPostSse = <T>(
   relay: RemoteRelayEndpoint,
   request: PostSseRequest<T>,
-) => connectionFor(relay).openSse(request);
+) => {
+  logRelay('debug', `openRelayPostSse ${request.path}`);
+  return connectionFor(relay).openSse(request);
+};
 
 export const closeRelayConnections = () => {
+  logRelay('info', `closeRelayConnections: closing ${connections.size} connections`);
   for (const connection of connections.values()) connection.close();
   connections.clear();
 };
@@ -1031,14 +1163,18 @@ export async function probeRelayConnection(
   timeoutMs = 8_000,
 ): Promise<{ ok: boolean; latencyMs?: number; error?: string }> {
   const start = Date.now();
+  logRelay('info', `probeRelayConnection start ${relaySummary(relay)} timeout=${timeoutMs}ms`);
   try {
     const connection = connectionFor(relay);
     await connection.ensureConnectedWithTimeout(timeoutMs);
     const latency = Date.now() - start;
+    logRelay('info', `probeRelayConnection OK ${latency}ms`);
     return { ok: true, latencyMs: latency };
   } catch (error) {
     const latency = Date.now() - start;
     const message = error instanceof Error ? error.message : String(error);
+    const code = error instanceof RemoteHostError ? error.code : 'unknown';
+    logRelay('error', `probeRelayConnection FAIL ${latency}ms code=${code} ${message}`);
     return { ok: false, latencyMs: latency, error: message };
   }
 }

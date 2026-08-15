@@ -11,6 +11,19 @@ import {
 import type { PairingDescriptorV1 } from '../protocol/remotePairingV1';
 import { isRelayTransportError } from '../api/remoteRelay';
 
+const PAIRING_LOG_ENABLED = __DEV__;
+
+const logPairing = (level: 'debug' | 'info' | 'warn' | 'error', message: string, details?: unknown) => {
+  if (!PAIRING_LOG_ENABLED) return;
+  const tag = '[Pairing]';
+  const fn = level === 'debug' ? console.log
+    : level === 'info' ? console.info
+    : level === 'warn' ? console.warn
+    : console.error;
+  if (details === undefined) fn(`${tag} ${message}`);
+  else fn(`${tag} ${message}`, details);
+};
+
 export type RemotePairingPhase =
   | 'idle'
   | 'blocked'
@@ -84,6 +97,7 @@ export const useRemotePairing = ({
   const beginPolling = useCallback(
     (pending: PendingPairing) => {
       const generation = ++pollingGeneration.current;
+      logPairing('info', `beginPolling started claimId=${pending.claimId} transport=${pending.transport}`);
 
       const pollOnce = async () => {
         if (generation !== pollingGeneration.current) return;
@@ -92,7 +106,10 @@ export const useRemotePairing = ({
           const result = await remoteMiraHostClient.pollPairing(pending);
           if (generation !== pollingGeneration.current) return;
 
+          logPairing('debug', `pollOnce status=${result.status}`);
+
           if (result.credential && result.deviceId) {
+            logPairing('info', 'pollOnce: PAIRED - credential received');
             stopPolling();
             setState({
               phase: 'paired',
@@ -105,6 +122,7 @@ export const useRemotePairing = ({
           }
 
           if (result.status === 'rejected') {
+            logPairing('info', 'pollOnce: REJECTED by desktop');
             stopPolling();
             setState({
               phase: 'rejected',
@@ -117,6 +135,7 @@ export const useRemotePairing = ({
           }
 
           if (result.status === 'expired') {
+            logPairing('info', 'pollOnce: EXPIRED');
             stopPolling();
             setState({
               phase: 'expired',
@@ -129,6 +148,7 @@ export const useRemotePairing = ({
           }
 
           if (result.status === 'delivered') {
+            logPairing('warn', 'pollOnce: DELIVERED but no credential (stale claim)');
             stopPolling();
             setState({
               phase: 'error',
@@ -140,6 +160,7 @@ export const useRemotePairing = ({
             return;
           }
 
+          logPairing('debug', `pollOnce: still waiting (${result.status})`);
           setState(current => ({
             ...current,
             phase: 'waiting_approval',
@@ -149,6 +170,8 @@ export const useRemotePairing = ({
           pollTimer.current = setTimeout(pollOnce, POLL_INTERVAL_MS);
         } catch (error) {
           if (generation !== pollingGeneration.current) return;
+          const code = error instanceof Error ? error.message : 'unknown';
+          logPairing('error', `pollOnce ERROR: ${code}`, error);
           stopPolling();
           const message = isRelayTransportError(error)
             ? `Relay 连接中断：${error instanceof Error ? error.message : '未知错误'}。请检查网络或桌面连接状态后重试。`
@@ -170,6 +193,7 @@ export const useRemotePairing = ({
 
   const start = useCallback(async () => {
     if (!descriptor) {
+      logPairing('warn', 'start: blocked - no descriptor');
       setState({
         ...INITIAL_STATE,
         phase: 'blocked',
@@ -182,7 +206,10 @@ export const useRemotePairing = ({
     const isAutoMode = transportMode === 'auto';
     const hasRelayEndpoint = Boolean(descriptor.relay);
 
+    logPairing('info', `start: mode=${transportMode} hasRelay=${hasRelayEndpoint} challengeId=${descriptor.challengeId}`);
+
     if (isRelayMode && !hasRelayEndpoint) {
+      logPairing('warn', 'start: blocked - relay mode but no relay endpoint in descriptor');
       setState({
         ...INITIAL_STATE,
         phase: 'blocked',
@@ -193,9 +220,9 @@ export const useRemotePairing = ({
 
     if (!isRelayMode && !connectivityReady) {
       if (isAutoMode && hasRelayEndpoint) {
-        // Auto mode with Relay fallback: proceed even if Direct is not ready
-        // selectPairingTransport will automatically fall back to Relay
+        logPairing('info', 'start: Direct not ready, proceeding with Auto+Relay fallback');
       } else {
+        logPairing('warn', 'start: blocked - connectivity not ready');
         setState({
           ...INITIAL_STATE,
           phase: 'blocked',
@@ -208,6 +235,7 @@ export const useRemotePairing = ({
     }
 
     if (!remoteMiraHostClient.isSecureStorageAvailable()) {
+      logPairing('warn', 'start: blocked - no secure storage');
       setState({
         ...INITIAL_STATE,
         phase: 'blocked',
@@ -226,13 +254,19 @@ export const useRemotePairing = ({
         : '正在向 Mira Desktop 提交设备申请。',
     });
 
+    logPairing('info', 'start: calling claimPairing...');
     try {
       const claim = await remoteMiraHostClient.claimPairing(descriptor, {
         name: `Mira Mobile (${Platform.OS})`,
         platform: Platform.OS,
         requestedScopes: [...REMOTE_DEVICE_SCOPES],
       });
-      if (generation !== pollingGeneration.current) return;
+      if (generation !== pollingGeneration.current) {
+        logPairing('warn', 'start: claim returned but generation changed, discarding');
+        return;
+      }
+
+      logPairing('info', `start: claim OK claimId=${claim.claimId} transport=${claim.transport}`);
 
       const pending: PendingPairing = {
         descriptor,
@@ -254,6 +288,8 @@ export const useRemotePairing = ({
       beginPolling(pending);
     } catch (error) {
       if (generation !== pollingGeneration.current) return;
+      const errMsg = error instanceof Error ? error.message : String(error);
+      logPairing('error', `start: claimPairing FAILED: ${errMsg}`, error);
       const message = (() => {
         if (isRelayTransportError(error)) {
           return `Relay 传输错误：${error instanceof Error ? error.message : '未知错误'}。请确认 Mira Desktop 已连接并重新生成配对二维码。`;
