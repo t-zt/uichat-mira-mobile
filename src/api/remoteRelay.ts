@@ -980,10 +980,9 @@ export async function probeRelayConnection(
 ): Promise<{ ok: boolean; latencyMs?: number; error?: string }> {
   const start = Date.now();
   try {
-    const connection = new RelayConnection(relay);
+    const connection = connectionFor(relay);
     await connection.ensureConnectedWithTimeout(timeoutMs);
     const latency = Date.now() - start;
-    connection.close();
     return { ok: true, latencyMs: latency };
   } catch (error) {
     const latency = Date.now() - start;
