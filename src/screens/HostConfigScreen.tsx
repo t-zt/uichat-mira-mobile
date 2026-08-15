@@ -39,6 +39,7 @@ import {
   type PairingDescriptorV1,
 } from '../protocol/remotePairingV1';
 import { remoteMiraHostClient } from '../api/remoteMiraHost';
+import { probeRelayConnection } from '../api/remoteRelay';
 import { useRemotePairing, type TransportMode } from '../pairing/useRemotePairing';
 import { useTheme } from '../theme/ThemeContext';
 import { PairingScannerModal } from '../components/PairingScannerModal';
@@ -95,6 +96,13 @@ export function HostConfigScreen() {
     useState<PairingDescriptorV1 | null>(null);
   const [pairingLinkError, setPairingLinkError] = useState<string | null>(null);
   const [rawPairingUri, setRawPairingUri] = useState('');
+  const [relayProbeState, setRelayProbeState] = useState<
+    'idle' | 'probing' | 'ok' | 'error'
+  >('idle');
+  const [relayProbeResult, setRelayProbeResult] = useState<{
+    latencyMs?: number;
+    error?: string;
+  } | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
 
   const [transportMode, setTransportMode] = useState<TransportMode>('auto');
@@ -155,6 +163,22 @@ export function HostConfigScreen() {
     [setConnectivityHostUrl],
   );
 
+  const probeRelay = useCallback(async () => {
+    if (!pairingDescriptor?.relay) return;
+    setRelayProbeState('probing');
+    setRelayProbeResult(null);
+    try {
+      const result = await probeRelayConnection(pairingDescriptor.relay);
+      setRelayProbeResult({ latencyMs: result.latencyMs, error: result.error });
+      setRelayProbeState(result.ok ? 'ok' : 'error');
+    } catch (e) {
+      setRelayProbeResult({
+        error: e instanceof Error ? e.message : String(e),
+      });
+      setRelayProbeState('error');
+    }
+  }, [pairingDescriptor?.relay]);
+
   useEffect(() => {
     try {
       const uri = buildPairingUriFromRoute(route.params);
@@ -166,6 +190,12 @@ export function HostConfigScreen() {
       );
     }
   }, [route.params, loadPairingUri]);
+
+  useEffect(() => {
+    if (pairingDescriptor?.relay && relayProbeState === 'idle') {
+      void probeRelay();
+    }
+  }, [pairingDescriptor?.relay, relayProbeState, probeRelay]);
 
   useEffect(() => {
     if (pairingState.phase !== 'paired' || !pairingDescriptor) return;
@@ -211,7 +241,9 @@ export function HostConfigScreen() {
     pairingState.phase === 'claiming' ||
     pairingState.phase === 'waiting_approval';
   const pairingCompleted = pairingState.phase === 'paired';
-  const networkReady = isRelayMode ? true : isDirectReady;
+  const networkReady = isRelayMode
+    ? relayProbeState === 'ok' || relayProbeState === 'idle'
+    : isDirectReady;
   const pairingActionDisabled =
     !pairingDescriptor ||
     !networkReady ||
@@ -601,19 +633,60 @@ export function HostConfigScreen() {
                     styles.statusBox,
                     {
                       backgroundColor: colors.bg.soft,
-                      borderColor: colors.primary,
+                      borderColor: relayProbeState === 'ok' ? colors.primary :
+                        relayProbeState === 'error' ? colors.status.error :
+                        colors.border.default,
                     },
                   ]}
                 >
                   <View style={styles.statusHeader}>
-                    <CheckCircle2 size={18} color={colors.primary} />
+                    {relayProbeState === 'probing' ? (
+                      <ActivityIndicator size="small" color={colors.text.muted} />
+                    ) : relayProbeState === 'ok' ? (
+                      <CheckCircle2 size={18} color={colors.primary} />
+                    ) : relayProbeState === 'error' ? (
+                      <AlertTriangle size={18} color={colors.status.error} />
+                    ) : (
+                      <Wifi size={18} color={colors.text.muted} />
+                    )}
                     <Text style={[styles.statusTitle, { color: colors.text.ink }]}>
-                      Relay endpoint 就绪
+                      {relayProbeState === 'probing' ? '正在检测 Relay 连接…' :
+                       relayProbeState === 'ok' ? 'Relay 连接正常' :
+                       relayProbeState === 'error' ? 'Relay 连接异常' :
+                       'Relay endpoint 就绪'}
                     </Text>
                   </View>
                   <Text style={[styles.bodyText, { color: colors.text.muted }]}>
                     {pairingDescriptor.relay.endpoint} · {pairingDescriptor.relay.relayId.slice(0, 8)}…
                   </Text>
+                  {relayProbeState === 'ok' && relayProbeResult?.latencyMs ? (
+                    <Text style={[styles.detailText, { color: colors.text.soft }]}>
+                      延迟 {relayProbeResult.latencyMs} ms
+                    </Text>
+                  ) : null}
+                  {relayProbeState === 'error' && relayProbeResult?.error ? (
+                    <Text style={[styles.detailText, { color: colors.status.error }]}>
+                      {relayProbeResult.error}
+                    </Text>
+                  ) : null}
+                  {relayProbeState !== 'probing' ? (
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.secondaryBtn,
+                        { borderColor: colors.border.default },
+                        pressed && { backgroundColor: colors.bg.soft },
+                      ]}
+                      onPress={() => {
+                        setRelayProbeState('idle');
+                        setRelayProbeResult(null);
+                        void probeRelay();
+                      }}
+                    >
+                      <Text style={[styles.secondaryBtnText, { color: colors.text.muted }]}>
+                        重新检测 Relay
+                      </Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               ) : (
                 <View

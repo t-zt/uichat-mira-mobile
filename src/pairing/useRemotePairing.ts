@@ -9,6 +9,7 @@ import {
   type RemoteDeviceScope,
 } from '../protocol/remoteHostV1';
 import type { PairingDescriptorV1 } from '../protocol/remotePairingV1';
+import { isRelayTransportError } from '../api/remoteRelay';
 
 export type RemotePairingPhase =
   | 'idle'
@@ -149,13 +150,15 @@ export const useRemotePairing = ({
         } catch (error) {
           if (generation !== pollingGeneration.current) return;
           stopPolling();
+          const message = isRelayTransportError(error)
+            ? `Relay 连接中断：${error instanceof Error ? error.message : '未知错误'}。请检查网络或桌面连接状态后重试。`
+            : error instanceof Error ? error.message : '配对状态检查失败';
           setState({
             phase: 'error',
             pending,
             deviceId: null,
             scopes: [],
-            message:
-              error instanceof Error ? error.message : '配对状态检查失败',
+            message,
           });
         }
       };
@@ -251,10 +254,17 @@ export const useRemotePairing = ({
       beginPolling(pending);
     } catch (error) {
       if (generation !== pollingGeneration.current) return;
+      const message = (() => {
+        if (isRelayTransportError(error)) {
+          return `Relay 传输错误：${error instanceof Error ? error.message : '未知错误'}。请确认 Mira Desktop 已连接并重新生成配对二维码。`;
+        }
+        if (error instanceof Error) return error.message;
+        return '提交配对申请失败';
+      })();
       setState({
         ...INITIAL_STATE,
         phase: 'error',
-        message: error instanceof Error ? error.message : '提交配对申请失败',
+        message,
       });
     }
   }, [beginPolling, connectivityReady, descriptor, stopPolling, transportMode]);

@@ -569,6 +569,13 @@ class RelayConnection {
     if (this.socket?.readyState === 1) return Promise.resolve();
     if (this.connectPromise) return this.connectPromise;
 
+    return this.ensureConnectedWithTimeout(HANDSHAKE_TIMEOUT_MS);
+  }
+
+  ensureConnectedWithTimeout(timeoutMs: number): Promise<void> {
+    if (this.socket?.readyState === 1) return Promise.resolve();
+    if (this.connectPromise) return this.connectPromise;
+
     const connectPromise = new Promise<void>((resolve, reject) => {
       this.resolveConnect = resolve;
       this.rejectConnect = reject;
@@ -613,7 +620,7 @@ class RelayConnection {
         } catch {
           // Socket may already be closed.
         }
-      }, HANDSHAKE_TIMEOUT_MS);
+      }, timeoutMs);
     };
 
     socket.onmessage = event => {
@@ -966,6 +973,24 @@ export const closeRelayConnections = () => {
   for (const connection of connections.values()) connection.close();
   connections.clear();
 };
+
+export async function probeRelayConnection(
+  relay: RemoteRelayEndpoint,
+  timeoutMs = 8_000,
+): Promise<{ ok: boolean; latencyMs?: number; error?: string }> {
+  const start = Date.now();
+  try {
+    const connection = new RelayConnection(relay);
+    await connection.ensureConnectedWithTimeout(timeoutMs);
+    const latency = Date.now() - start;
+    connection.close();
+    return { ok: true, latencyMs: latency };
+  } catch (error) {
+    const latency = Date.now() - start;
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, latencyMs: latency, error: message };
+  }
+}
 
 export const isRelayTransportError = (error: unknown) =>
   error instanceof RemoteHostError && error.code.startsWith('RELAY_');
