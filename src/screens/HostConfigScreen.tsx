@@ -105,6 +105,7 @@ export function HostConfigScreen() {
   const [pairingDescriptor, setPairingDescriptor] =
     useState<PairingDescriptorV1 | null>(null);
   const [pairingLinkError, setPairingLinkError] = useState<string | null>(null);
+  const [rawPairingUri, setRawPairingUri] = useState('');
   const [scannerOpen, setScannerOpen] = useState(false);
 
   const [transportMode, setTransportMode] = useState<TransportMode>('auto');
@@ -359,6 +360,50 @@ export function HostConfigScreen() {
             >
               <ScanLine size={18} color={colors.onPrimary} />
               <Text style={[styles.scanBtnText, { color: colors.onPrimary }]}>扫码配对</Text>
+            </Pressable>
+
+            <Text style={[styles.label, { color: colors.text.muted }]}>
+              或粘贴配对链接（mira://pair?...）
+            </Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  borderColor: colors.border.default,
+                  backgroundColor: colors.bg.input,
+                  color: colors.text.ink,
+                  minHeight: 72,
+                },
+              ]}
+              value={rawPairingUri}
+              onChangeText={setRawPairingUri}
+              placeholder="mira://pair?version=1&relay=https%3A%2F%2Frelay.tomz.io&relayId=...&relayToken=...&challenge=...&code=..."
+              placeholderTextColor={colors.text.placeholder}
+              autoCapitalize="none"
+              autoCorrect={false}
+              multiline
+              textAlignVertical="top"
+              editable={!pairingDescriptor}
+            />
+            <Pressable
+              style={({ pressed }) => [
+                styles.secondaryBtn,
+                {
+                  borderColor: rawPairingUri.trim() ? colors.primary : colors.border.default,
+                  opacity: rawPairingUri.trim() ? 1 : 0.5,
+                },
+                pressed && rawPairingUri.trim() && { backgroundColor: colors.bg.soft },
+              ]}
+              onPress={() => {
+                if (rawPairingUri.trim()) {
+                  loadPairingUri(rawPairingUri.trim());
+                }
+              }}
+              disabled={!rawPairingUri.trim() || !!pairingDescriptor}
+            >
+              <Text style={[styles.secondaryBtnText, { color: colors.primary }]}>
+                解析配对链接
+              </Text>
             </Pressable>
 
             {pairingLinkError ? (

@@ -177,26 +177,28 @@ export const useRemotePairing = ({
 
     const isRelayMode = transportMode === 'relay';
     const isAutoMode = transportMode === 'auto';
+    const hasRelayEndpoint = Boolean(descriptor.relay);
 
-    if (!isRelayMode && !connectivityReady) {
+    if (isRelayMode && !hasRelayEndpoint) {
       setState({
         ...INITIAL_STATE,
         phase: 'blocked',
-        message: isAutoMode
-          ? '等待网络连接中，请确保 Direct 或 Relay 可用。'
-          : 'Direct 联通尚未通过，未提交配对申请。',
+        message: 'Relay 模式需要配对链接中包含 Relay endpoint。',
       });
       return;
     }
 
-    // Relay 模式下检查 Relay 是否就绪
-    if (isRelayMode) {
-      const transport = remoteMiraHostClient.getTransport();
-      if (!transport || transport.type !== 'relay') {
+    if (!isRelayMode && !connectivityReady) {
+      if (isAutoMode && hasRelayEndpoint) {
+        // Auto mode with Relay fallback: proceed even if Direct is not ready
+        // selectPairingTransport will automatically fall back to Relay
+      } else {
         setState({
           ...INITIAL_STATE,
           phase: 'blocked',
-          message: 'Relay 传输层未就绪，请配置 Relay 后重试。',
+          message: isAutoMode
+            ? '等待网络连接中，请确保 Direct 或 Relay 可用。'
+            : 'Direct 联通尚未通过，未提交配对申请。',
         });
         return;
       }
