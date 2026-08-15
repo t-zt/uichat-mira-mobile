@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   ChevronLeft,
+  FileText,
   KeyRound,
   RefreshCw,
   ScanLine,
@@ -777,6 +778,16 @@ export function HostConfigScreen() {
               </Text>
             </Pressable>
           ) : null}
+
+          <Pressable
+            style={[styles.debugLogBtn, { borderColor: colors.border.default }]}
+            onPress={() => navigation.navigate('DebugLog')}
+          >
+            <FileText size={16} color={colors.text.muted} />
+            <Text style={[styles.debugLogBtnText, { color: colors.text.muted }]}>
+              查看调试日志
+            </Text>
+          </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -946,6 +957,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   disconnectBtnText: { fontSize: 15, fontWeight: '600' },
+  debugLogBtn: {
+    height: 44,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderStyle: 'dashed',
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  debugLogBtnText: { fontSize: 13, fontWeight: '500' },
   relayHintBox: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 10,

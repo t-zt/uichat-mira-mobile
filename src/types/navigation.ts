@@ -19,6 +19,7 @@ export type RootStackParamList = {
   ReportError: undefined;
   About: undefined;
   License: undefined;
+  DebugLog: undefined;
 };
 
 export type DrawerParamList = {

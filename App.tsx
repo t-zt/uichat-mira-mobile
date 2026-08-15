@@ -16,6 +16,7 @@ import { MemoryScreen } from './src/screens/MemoryScreen';
 import { ReportErrorScreen } from './src/screens/ReportErrorScreen';
 import { AboutScreen } from './src/screens/AboutScreen';
 import { LicenseScreen } from './src/screens/LicenseScreen';
+import { DebugLogScreen } from './src/screens/DebugLogScreen';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { TailscaleConnectivityLifecycle } from './src/connectivity/TailscaleConnectivityLifecycle';
 import { remoteMiraHostClient } from './src/api/remoteMiraHost';
@@ -116,6 +117,7 @@ function AppInner() {
         <Stack.Screen name="ReportError" component={ReportErrorScreen} />
         <Stack.Screen name="About" component={AboutScreen} />
         <Stack.Screen name="License" component={LicenseScreen} />
+        <Stack.Screen name="DebugLog" component={DebugLogScreen} />
       </Stack.Navigator>
     </>
   );

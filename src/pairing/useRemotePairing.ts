@@ -10,18 +10,25 @@ import {
 } from '../protocol/remoteHostV1';
 import type { PairingDescriptorV1 } from '../protocol/remotePairingV1';
 import { isRelayTransportError } from '../api/remoteRelay';
+import { useDebugLogStore } from '../store/debugLogStore';
 
-const PAIRING_LOG_ENABLED = __DEV__;
+const PAIRING_LOG_TAG = 'Pairing';
 
 const logPairing = (level: 'debug' | 'info' | 'warn' | 'error', message: string, details?: unknown) => {
-  if (!PAIRING_LOG_ENABLED) return;
-  const tag = '[Pairing]';
+  const tag = `[${PAIRING_LOG_TAG}]`;
   const fn = level === 'debug' ? console.log
     : level === 'info' ? console.info
     : level === 'warn' ? console.warn
     : console.error;
-  if (details === undefined) fn(`${tag} ${message}`);
-  else fn(`${tag} ${message}`, details);
+  if (__DEV__) {
+    if (details === undefined) fn(`${tag} ${message}`);
+    else fn(`${tag} ${message}`, details);
+  }
+  try {
+    useDebugLogStore.getState().append(level, PAIRING_LOG_TAG, message, details);
+  } catch {
+    // Store may not be initialized yet during early startup.
+  }
 };
 
 export type RemotePairingPhase =

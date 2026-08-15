@@ -8,6 +8,7 @@ import {
   normalizeRelayEndpoint,
   type RemoteRelayEndpoint,
 } from '../protocol/remotePairingV1';
+import { useDebugLogStore } from '../store/debugLogStore';
 
 const RELAY_PROTOCOL_VERSION = 1;
 const HANDSHAKE_TIMEOUT_MS = 10_000;
@@ -18,31 +19,38 @@ const BASE64_ALPHABET =
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 const RELAY_LOG_ENABLED = __DEV__;
+const RELAY_LOG_TAG = 'Relay';
 
 function logRelay(
   level: LogLevel,
   message: string,
   details?: unknown,
 ): void {
-  if (!RELAY_LOG_ENABLED) return;
-  const tag = '[Relay]';
-  switch (level) {
-    case 'debug':
-      if (details === undefined) console.log(`${tag} ${message}`);
-      else console.log(`${tag} ${message}`, details);
-      break;
-    case 'info':
-      if (details === undefined) console.info(`${tag} ${message}`);
-      else console.info(`${tag} ${message}`, details);
-      break;
-    case 'warn':
-      if (details === undefined) console.warn(`${tag} ${message}`);
-      else console.warn(`${tag} ${message}`, details);
-      break;
-    case 'error':
-      if (details === undefined) console.error(`${tag} ${message}`);
-      else console.error(`${tag} ${message}`, details);
-      break;
+  if (RELAY_LOG_ENABLED) {
+    const tag = `[${RELAY_LOG_TAG}]`;
+    switch (level) {
+      case 'debug':
+        if (details === undefined) console.log(`${tag} ${message}`);
+        else console.log(`${tag} ${message}`, details);
+        break;
+      case 'info':
+        if (details === undefined) console.info(`${tag} ${message}`);
+        else console.info(`${tag} ${message}`, details);
+        break;
+      case 'warn':
+        if (details === undefined) console.warn(`${tag} ${message}`);
+        else console.warn(`${tag} ${message}`, details);
+        break;
+      case 'error':
+        if (details === undefined) console.error(`${tag} ${message}`);
+        else console.error(`${tag} ${message}`, details);
+        break;
+    }
+  }
+  try {
+    useDebugLogStore.getState().append(level, RELAY_LOG_TAG, message, details);
+  } catch {
+    // Store may not be initialized yet during early startup.
   }
 }
 
