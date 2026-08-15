@@ -12,6 +12,7 @@ import { HostConfigScreen } from './src/screens/HostConfigScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { SearchScreen } from './src/screens/SearchScreen';
 import { PersonalizationScreen } from './src/screens/PersonalizationScreen';
+import { MemoryScreen } from './src/screens/MemoryScreen';
 import { ReportErrorScreen } from './src/screens/ReportErrorScreen';
 import { AboutScreen } from './src/screens/AboutScreen';
 import { LicenseScreen } from './src/screens/LicenseScreen';
@@ -111,6 +112,7 @@ function AppInner() {
         <Stack.Screen name="Settings" component={SettingsScreen} />
         <Stack.Screen name="Search" component={SearchScreen} options={{ animation: 'none' }} />
         <Stack.Screen name="Personalization" component={PersonalizationScreen} />
+        <Stack.Screen name="Memory" component={MemoryScreen} />
         <Stack.Screen name="ReportError" component={ReportErrorScreen} />
         <Stack.Screen name="About" component={AboutScreen} />
         <Stack.Screen name="License" component={LicenseScreen} />

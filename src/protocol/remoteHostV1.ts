@@ -6,6 +6,9 @@ export const REMOTE_DEVICE_SCOPES = [
   'agent:approve',
   'agent:control',
   'artifacts:read',
+  'memory:read',
+  'memory:write',
+  'app:read',
 ] as const;
 
 export type RemoteDeviceScope = (typeof REMOTE_DEVICE_SCOPES)[number];
@@ -79,6 +82,8 @@ export interface RemoteManifest {
     messages: string[];
     agent: string[];
     artifacts: string[];
+    memory?: string[];
+    appMeta?: string[];
   };
   reconnect: {
     mode: 'canonical-state-replay';
@@ -388,6 +393,12 @@ export const parseRemoteManifest = (value: unknown): RemoteManifest => {
       messages: stringArray(value.routes.messages, 'manifest.routes.messages'),
       agent: stringArray(value.routes.agent, 'manifest.routes.agent'),
       artifacts: stringArray(value.routes.artifacts, 'manifest.routes.artifacts'),
+      ...(Array.isArray(value.routes.memory)
+        ? { memory: stringArray(value.routes.memory, 'manifest.routes.memory') }
+        : {}),
+      ...(Array.isArray(value.routes.appMeta)
+        ? { appMeta: stringArray(value.routes.appMeta, 'manifest.routes.appMeta') }
+        : {}),
     },
     reconnect: {
       mode: 'canonical-state-replay',
@@ -508,4 +519,77 @@ export const parseRemoteChatStreamEvent = (value: unknown): RemoteChatStreamEven
   }
 
   return value as RemoteChatStreamEvent;
+};
+
+// ─── Memory ───────────────────────────────────────────────
+
+export interface RemoteMemoryItem {
+  id: string;
+  content: string;
+  type: 'manual' | 'auto';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RemoteMemorySettings {
+  enabled: boolean;
+  autoCapture: boolean;
+}
+
+export const parseRemoteMemoryItem = (value: unknown): RemoteMemoryItem => {
+  if (!isRecord(value)) {
+    throw new Error('Memory item must be an object');
+  }
+  const type = requiredString(value, 'type', 'memory') as 'manual' | 'auto';
+  if (type !== 'manual' && type !== 'auto') {
+    throw new Error(`Unsupported memory type: ${type}`);
+  }
+  return {
+    id: requiredString(value, 'id', 'memory'),
+    content: requiredString(value, 'content', 'memory'),
+    type,
+    createdAt: requiredString(value, 'createdAt', 'memory'),
+    updatedAt: requiredString(value, 'updatedAt', 'memory'),
+  };
+};
+
+export const parseRemoteMemorySettings = (value: unknown): RemoteMemorySettings => {
+  if (!isRecord(value)) {
+    throw new Error('Memory settings must be an object');
+  }
+  return {
+    enabled:
+      typeof value.enabled === 'boolean' ? value.enabled : false,
+    autoCapture:
+      typeof value.autoCapture === 'boolean' ? value.autoCapture : false,
+  };
+};
+
+// ─── App Meta ─────────────────────────────────────────────
+
+export interface RemoteAppMeta {
+  version: string;
+  repository?: string;
+  homepage?: string;
+  name?: string;
+  description?: string;
+}
+
+export const parseRemoteAppMeta = (value: unknown): RemoteAppMeta => {
+  if (!isRecord(value)) {
+    throw new Error('App meta must be an object');
+  }
+  return {
+    version: requiredString(value, 'version', 'appMeta'),
+    ...(typeof value.repository === 'string'
+      ? { repository: value.repository }
+      : {}),
+    ...(typeof value.homepage === 'string'
+      ? { homepage: value.homepage }
+      : {}),
+    ...(typeof value.name === 'string' ? { name: value.name } : {}),
+    ...(typeof value.description === 'string'
+      ? { description: value.description }
+      : {}),
+  };
 };

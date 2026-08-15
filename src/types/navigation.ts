@@ -15,6 +15,7 @@ export type RootStackParamList = {
   Settings: undefined;
   Search: undefined;
   Personalization: undefined;
+  Memory: undefined;
   ReportError: undefined;
   About: undefined;
   License: undefined;

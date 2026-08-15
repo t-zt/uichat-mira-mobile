@@ -3,16 +3,22 @@ import {
   parsePairingClaimResponse,
   parsePairingPollResponse,
   parseRemoteAgentRun,
+  parseRemoteAppMeta,
   parseRemoteChatStreamEvent,
   parseRemoteManifest,
+  parseRemoteMemoryItem,
+  parseRemoteMemorySettings,
   parseRemoteMessage,
   parseRemoteThread,
   type PairingClaimResponse,
   type PairingPollResponse,
   type RemoteAgentRun,
+  type RemoteAppMeta,
   type RemoteChatStreamEvent,
   type RemoteDeviceScope,
   type RemoteManifest,
+  type RemoteMemoryItem,
+  type RemoteMemorySettings,
   type RemoteMessage,
   type RemoteThread,
 } from '../protocol/remoteHostV1';
@@ -598,6 +604,198 @@ export class RemoteMiraHostClient {
         headers: { Authorization: `Bearer ${credential.credential}` },
       };
     });
+  }
+
+  // ─── Memory ────────────────────────────────────────────
+
+  async listMemories(): Promise<RemoteMemoryItem[]> {
+    const path = '/memory';
+    const parse = (value: unknown) => parseArray(value, parseRemoteMemoryItem, 'memories');
+
+    if (this.transport) {
+      return this.withCredential((credential) =>
+        this.transport!.request({
+          path,
+          method: 'GET',
+          credential: credential.credential,
+          parse,
+        }),
+      );
+    }
+
+    return this.withCredential((credential) =>
+      this.requestCredentialJson(credential, {
+        path,
+        credential: credential.credential,
+        parse,
+      }),
+    );
+  }
+
+  async getMemorySettings(): Promise<RemoteMemorySettings> {
+    const path = '/memory/settings';
+    const parse = parseRemoteMemorySettings;
+
+    if (this.transport) {
+      return this.withCredential((credential) =>
+        this.transport!.request({
+          path,
+          method: 'GET',
+          credential: credential.credential,
+          parse,
+        }),
+      );
+    }
+
+    return this.withCredential((credential) =>
+      this.requestCredentialJson(credential, {
+        path,
+        credential: credential.credential,
+        parse,
+      }),
+    );
+  }
+
+  async updateMemorySettings(
+    input: Partial<RemoteMemorySettings>,
+  ): Promise<RemoteMemorySettings> {
+    const path = '/memory/settings';
+    const parse = parseRemoteMemorySettings;
+    const body: Record<string, boolean> = {};
+    if (input.enabled !== undefined) body.enabled = input.enabled;
+    if (input.autoCapture !== undefined) body.autoCapture = input.autoCapture;
+
+    if (this.transport) {
+      return this.withCredential((credential) =>
+        this.transport!.request({
+          path,
+          method: 'PUT',
+          credential: credential.credential,
+          body,
+          parse,
+        }),
+      );
+    }
+
+    return this.withCredential((credential) =>
+      this.requestCredentialJson(credential, {
+        path,
+        method: 'PUT',
+        credential: credential.credential,
+        body,
+        parse,
+      }),
+    );
+  }
+
+  async createMemory(content: string): Promise<RemoteMemoryItem> {
+    const path = '/memory';
+    const parse = parseRemoteMemoryItem;
+    const body = { content, type: 'manual' as const };
+
+    if (this.transport) {
+      return this.withCredential((credential) =>
+        this.transport!.request({
+          path,
+          method: 'POST',
+          credential: credential.credential,
+          body,
+          parse,
+        }),
+      );
+    }
+
+    return this.withCredential((credential) =>
+      this.requestCredentialJson(credential, {
+        path,
+        method: 'POST',
+        credential: credential.credential,
+        body,
+        parse,
+      }),
+    );
+  }
+
+  async updateMemory(
+    memoryId: string,
+    content: string,
+  ): Promise<RemoteMemoryItem> {
+    const path = `/memory/${encodeURIComponent(memoryId)}`;
+    const parse = parseRemoteMemoryItem;
+    const body = { content };
+
+    if (this.transport) {
+      return this.withCredential((credential) =>
+        this.transport!.request({
+          path,
+          method: 'PATCH',
+          credential: credential.credential,
+          body,
+          parse,
+        }),
+      );
+    }
+
+    return this.withCredential((credential) =>
+      this.requestCredentialJson(credential, {
+        path,
+        method: 'PATCH',
+        credential: credential.credential,
+        body,
+        parse,
+      }),
+    );
+  }
+
+  async deleteMemory(memoryId: string): Promise<void> {
+    const path = `/memory/${encodeURIComponent(memoryId)}`;
+
+    if (this.transport) {
+      await this.withCredential((credential) =>
+        this.transport!.request({
+          path,
+          method: 'DELETE',
+          credential: credential.credential,
+          parse: (value: unknown) => value as void,
+        }),
+      );
+      return;
+    }
+
+    return this.withCredential((credential) =>
+      this.requestCredentialJson(credential, {
+        path,
+        method: 'DELETE',
+        credential: credential.credential,
+        parse: () => undefined,
+      }),
+    );
+  }
+
+  // ─── App Meta ──────────────────────────────────────────
+
+  async getAppMeta(): Promise<RemoteAppMeta> {
+    const path = '/app/meta';
+    const parse = parseRemoteAppMeta;
+
+    if (this.transport) {
+      return this.withCredential((credential) =>
+        this.transport!.request({
+          path,
+          method: 'GET',
+          credential: credential.credential,
+          parse,
+        }),
+      );
+    }
+
+    return this.withCredential((credential) =>
+      this.requestCredentialJson(credential, {
+        path,
+        credential: credential.credential,
+        parse,
+      }),
+    );
   }
 
   private async selectPairingTransport(
