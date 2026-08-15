@@ -43,6 +43,17 @@ import { useRemotePairing, type TransportMode } from '../pairing/useRemotePairin
 import { useTheme } from '../theme/ThemeContext';
 import { PairingScannerModal } from '../components/PairingScannerModal';
 
+const transportModeLabel = (mode: TransportMode) => {
+  switch (mode) {
+    case 'relay':
+      return 'Relay';
+    case 'direct':
+      return 'Direct';
+    default:
+      return '自动';
+  }
+};
+
 const connectivityTitle = (state: TailscaleConnectivityState) => {
   switch (state) {
     case 'idle':
@@ -375,31 +386,52 @@ export function HostConfigScreen() {
           <View style={[styles.card, { backgroundColor: colors.bg.card }]}>
             <View style={styles.sectionHeading}>
               <Wifi size={20} color={colors.text.ink} />
-              <Text style={[styles.sectionTitle, { color: colors.text.ink }]}>Direct 传输</Text>
+              <Text style={[styles.sectionTitle, { color: colors.text.ink }]}>
+                {transportMode === 'relay' ? 'Mira Relay' : 'Direct 传输'}
+              </Text>
             </View>
 
-            <Text style={[styles.label, { color: colors.text.muted }]}>Mira Host 地址</Text>
-            <TextInput
-              style={[
-                styles.input,
-                {
-                  borderColor: colors.border.default,
-                  backgroundColor: colors.bg.input,
-                  color: colors.text.ink,
-                },
-              ]}
-              value={hostUrl}
-              onChangeText={value => {
-                setHostUrl(value);
-                setConnectivityHostUrl(value);
-              }}
-              placeholder="https://mira-desktop.local"
-              placeholderTextColor={colors.text.placeholder}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
-              editable={!isProbing && !pairingDescriptor}
-            />
+            {transportMode !== 'relay' ? (
+              <>
+                <Text style={[styles.label, { color: colors.text.muted }]}>Mira Host 地址</Text>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      borderColor: colors.border.default,
+                      backgroundColor: colors.bg.input,
+                      color: colors.text.ink,
+                    },
+                  ]}
+                  value={hostUrl}
+                  onChangeText={value => {
+                    setHostUrl(value);
+                    setConnectivityHostUrl(value);
+                  }}
+                  placeholder="https://mira-desktop.local"
+                  placeholderTextColor={colors.text.placeholder}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                  editable={!isProbing && !pairingDescriptor}
+                />
+              </>
+            ) : (
+              <View
+                style={[
+                  styles.relayHintBox,
+                  {
+                    backgroundColor: colors.bg.soft,
+                    borderColor: colors.border.default,
+                  },
+                ]}
+              >
+                <Text style={[styles.relayHintText, { color: colors.text.muted }]}>
+                  Relay 模式下不需要填写主机地址。请从 Mira Desktop 扫描配对二维码，
+                  桌面端会自动下发 Relay endpoint。
+                </Text>
+              </View>
+            )}
 
             {pairingState.phase === 'idle' || pairingState.phase === 'blocked' ? (
               <View style={styles.transportSelector}>
@@ -465,63 +497,109 @@ export function HostConfigScreen() {
               </View>
             ) : null}
 
-            <View
-              style={[
-                styles.statusBox,
-                {
-                  backgroundColor: hasTransportError
-                    ? colors.status.errorBg
-                    : colors.bg.soft,
-                  borderColor: statusColor,
-                },
-              ]}
-            >
-              <View style={styles.statusHeader}>
-                {isProbing ? (
-                  <ActivityIndicator size="small" color={statusColor} />
-                ) : connectivityState === 'ready' ? (
-                  <CheckCircle2 size={18} color={statusColor} />
-                ) : connectivityState === 'idle' ? (
-                  <Wifi size={18} color={statusColor} />
-                ) : (
-                  <AlertTriangle size={18} color={statusColor} />
-                )}
-                <Text style={[styles.statusTitle, { color: colors.text.ink }]}> 
-                  {connectivityTitle(connectivityState)}
-                </Text>
-              </View>
-              <Text style={[styles.bodyText, { color: colors.text.muted }]}> 
-                {statusMessage}
-              </Text>
-              {connectivityResult?.identity ? (
-                <Text style={[styles.detailText, { color: colors.text.soft }]}> 
-                  {connectivityResult.identity.displayName} · v{connectivityResult.identity.version} ·{' '}
-                  {connectivityResult.latencyMs ?? 0} ms
-                </Text>
-              ) : null}
-            </View>
+            {transportMode !== 'relay' ? (
+              <>
+                <View
+                  style={[
+                    styles.statusBox,
+                    {
+                      backgroundColor: hasTransportError
+                        ? colors.status.errorBg
+                        : colors.bg.soft,
+                      borderColor: statusColor,
+                    },
+                  ]}
+                >
+                  <View style={styles.statusHeader}>
+                    {isProbing ? (
+                      <ActivityIndicator size="small" color={statusColor} />
+                    ) : connectivityState === 'ready' ? (
+                      <CheckCircle2 size={18} color={statusColor} />
+                    ) : connectivityState === 'idle' ? (
+                      <Wifi size={18} color={statusColor} />
+                    ) : (
+                      <AlertTriangle size={18} color={statusColor} />
+                    )}
+                    <Text style={[styles.statusTitle, { color: colors.text.ink }]}> 
+                      {connectivityTitle(connectivityState)}
+                    </Text>
+                  </View>
+                  <Text style={[styles.bodyText, { color: colors.text.muted }]}> 
+                    {statusMessage}
+                  </Text>
+                  {connectivityResult?.identity ? (
+                    <Text style={[styles.detailText, { color: colors.text.soft }]}> 
+                      {connectivityResult.identity.displayName} · v{connectivityResult.identity.version} ·{' '}
+                      {connectivityResult.latencyMs ?? 0} ms
+                    </Text>
+                  ) : null}
+                </View>
 
-            <Pressable
-              style={({ pressed }) => [
-                styles.secondaryBtn,
-                { borderColor: colors.primary },
-                pressed && { backgroundColor: colors.bg.soft },
-              ]}
-              onPress={handleCheck}
-              disabled={isProbing || !hostUrl.trim()}
-            >
-              {isProbing ? (
-                <ActivityIndicator size="small" color={colors.primary} />
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.secondaryBtn,
+                    { borderColor: colors.primary },
+                    pressed && { backgroundColor: colors.bg.soft },
+                  ]}
+                  onPress={handleCheck}
+                  disabled={isProbing || !hostUrl.trim()}
+                >
+                  {isProbing ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <RefreshCw size={18} color={colors.primary} />
+                  )}
+                  <Text style={[styles.secondaryBtnText, { color: colors.primary }]}> 
+                    {isProbing ? '正在检查' : '重新检查连接'}
+                  </Text>
+                </Pressable>
+              </>
+            ) : (
+              pairingDescriptor?.relay ? (
+                <View
+                  style={[
+                    styles.statusBox,
+                    {
+                      backgroundColor: colors.bg.soft,
+                      borderColor: colors.primary,
+                    },
+                  ]}
+                >
+                  <View style={styles.statusHeader}>
+                    <CheckCircle2 size={18} color={colors.primary} />
+                    <Text style={[styles.statusTitle, { color: colors.text.ink }]}>
+                      Relay endpoint 就绪
+                    </Text>
+                  </View>
+                  <Text style={[styles.bodyText, { color: colors.text.muted }]}>
+                    {pairingDescriptor.relay.endpoint} · {pairingDescriptor.relay.relayId.slice(0, 8)}…
+                  </Text>
+                </View>
               ) : (
-                <RefreshCw size={18} color={colors.primary} />
-              )}
-              <Text style={[styles.secondaryBtnText, { color: colors.primary }]}> 
-                {isProbing ? '正在检查' : '重新检查连接'}
-              </Text>
-            </Pressable>
+                <View
+                  style={[
+                    styles.statusBox,
+                    {
+                      backgroundColor: colors.bg.soft,
+                      borderColor: colors.border.default,
+                    },
+                  ]}
+                >
+                  <View style={styles.statusHeader}>
+                    <Wifi size={18} color={colors.text.muted} />
+                    <Text style={[styles.statusTitle, { color: colors.text.ink }]}>
+                      等待 Relay endpoint
+                    </Text>
+                  </View>
+                  <Text style={[styles.bodyText, { color: colors.text.muted }]}>
+                    扫描 Mira Desktop 生成的配对二维码后，Relay endpoint 将自动填入。
+                  </Text>
+                </View>
+              )
+            )}
           </View>
 
-          {hasRelayEndpoint ? (
+          {hasRelayEndpoint && transportMode !== 'relay' ? (
             <View style={[styles.card, { backgroundColor: colors.bg.card }]}>
               <View style={styles.sectionHeading}>
                 <Wifi size={20} color={colors.primary} />
@@ -752,4 +830,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   disconnectBtnText: { fontSize: 15, fontWeight: '600' },
+  relayHintBox: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 14,
+  },
+  relayHintText: { fontSize: 13, lineHeight: 20 },
 });
