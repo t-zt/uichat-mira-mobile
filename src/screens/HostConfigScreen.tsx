@@ -43,17 +43,6 @@ import { useRemotePairing, type TransportMode } from '../pairing/useRemotePairin
 import { useTheme } from '../theme/ThemeContext';
 import { PairingScannerModal } from '../components/PairingScannerModal';
 
-const transportModeLabel = (mode: TransportMode) => {
-  switch (mode) {
-    case 'relay':
-      return 'Relay';
-    case 'direct':
-      return 'Direct';
-    default:
-      return '自动';
-  }
-};
-
 const connectivityTitle = (state: TailscaleConnectivityState) => {
   switch (state) {
     case 'idle':
@@ -138,6 +127,7 @@ export function HostConfigScreen() {
         const descriptor = parsePairingUriV1(uri);
         setPairingDescriptor(descriptor);
         setPairingLinkError(null);
+        setRawPairingUri(uri.trim());
 
         if (descriptor.hostUrl) {
           setHostUrl(descriptor.hostUrl);
@@ -368,11 +358,11 @@ export function HostConfigScreen() {
             <TextInput
               style={[
                 styles.input,
+                styles.pairingUriInput,
                 {
                   borderColor: colors.border.default,
                   backgroundColor: colors.bg.input,
                   color: colors.text.ink,
-                  minHeight: 72,
                 },
               ]}
               value={rawPairingUri}
@@ -440,26 +430,31 @@ export function HostConfigScreen() {
               <>
                 <Text style={[styles.label, { color: colors.text.muted }]}>Mira Host 地址</Text>
                 <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      borderColor: colors.border.default,
-                      backgroundColor: colors.bg.input,
-                      color: colors.text.ink,
-                    },
-                  ]}
-                  value={hostUrl}
-                  onChangeText={value => {
-                    setHostUrl(value);
-                    setConnectivityHostUrl(value);
-                  }}
-                  placeholder="https://mira-desktop.local"
-                  placeholderTextColor={colors.text.placeholder}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="url"
-                  editable={!isProbing && !pairingDescriptor}
-                />
+              style={[
+                styles.input,
+                {
+                  borderColor: colors.border.default,
+                  backgroundColor: colors.bg.input,
+                  color: colors.text.ink,
+                },
+              ]}
+              value={/^mira:/i.test(hostUrl) ? '' : hostUrl}
+              onChangeText={value => {
+                setHostUrl(value);
+                if (/^mira:\/\/pair/i.test(value.trim())) {
+                  setRawPairingUri(value.trim());
+                  loadPairingUri(value.trim());
+                } else {
+                  setConnectivityHostUrl(value);
+                }
+              }}
+              placeholder="https://mira-desktop.local"
+              placeholderTextColor={colors.text.placeholder}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              editable={!isProbing && !pairingDescriptor}
+            />
               </>
             ) : (
               <View
@@ -785,6 +780,9 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     fontSize: 14,
     marginBottom: 14,
+  },
+  pairingUriInput: {
+    minHeight: 72,
   },
   scanBtn: {
     minHeight: 48,
