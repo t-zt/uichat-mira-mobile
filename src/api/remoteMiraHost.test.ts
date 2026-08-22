@@ -59,6 +59,21 @@ const manifestPayload = {
   serverTime: '2026-08-02T00:00:00.000Z',
 };
 
+const pairingDescriptor = {
+  version: 1 as const,
+  hostUrl: 'https://mira.example.ts.net',
+  relay,
+  challengeId: 'challenge-1',
+  code: 'ABCD2345',
+};
+
+const claimPayload = {
+  claimId: 'claim-1',
+  pollToken: 'poll-token',
+  status: 'claimed' as const,
+  expiresAt: '2026-08-02T00:05:00.000Z',
+};
+
 describe('RemoteMiraHostClient pairing credential retention', () => {
   it('persists the one-time credential before manifest verification', async () => {
     const store = new MemoryDeviceCredentialStore();
@@ -122,6 +137,114 @@ describe('RemoteMiraHostClient pairing credential retention', () => {
 });
 
 describe('RemoteMiraHostClient transport selection', () => {
+  it('prefers Relay for pairing and reports the selected transport', async () => {
+    const store = new MemoryDeviceCredentialStore();
+    const directMock = jest.fn();
+    const direct: JsonTransport = async request => {
+      directMock(request);
+      return request.parse({ status: 'ok' });
+    };
+    const relayJsonMock = jest.fn();
+    const relayJson: RelayJsonTransport = async (endpoint, request) => {
+      relayJsonMock(endpoint, request);
+      return request.path === '/health'
+        ? request.parse({ status: 'ok' })
+        : request.parse(claimPayload);
+    };
+    const client = new RemoteMiraHostClient(
+      store,
+      direct,
+      undefined,
+      relayJson,
+    );
+
+    await expect(
+      client.claimPairing(pairingDescriptor, {
+        name: 'Android phone',
+        platform: 'android',
+      }),
+    ).resolves.toMatchObject({ ...claimPayload, transport: 'relay' });
+    expect(directMock).not.toHaveBeenCalled();
+    expect(relayJsonMock).toHaveBeenCalledTimes(2);
+    expect(relayJsonMock.mock.calls.map(call => call[1].path)).toEqual([
+      '/health',
+      '/remote/pairing/claim',
+    ]);
+    expect(relayJsonMock.mock.calls[1][1].body).toMatchObject({
+      challengeId: 'challenge-1',
+      transport: 'relay',
+    });
+  });
+
+  it('falls back to Direct only when the Relay preflight fails', async () => {
+    const store = new MemoryDeviceCredentialStore();
+    const directMock = jest.fn();
+    const direct: JsonTransport = async request => {
+      directMock(request);
+      return request.path === '/health'
+        ? request.parse({ status: 'ok' })
+        : request.parse(claimPayload);
+    };
+    const relayJsonMock = jest.fn();
+    const relayJson: RelayJsonTransport = async (endpoint, request) => {
+      relayJsonMock(endpoint, request);
+      throw new RemoteHostError('RELAY_NETWORK_ERROR', 'relay unavailable');
+    };
+    const client = new RemoteMiraHostClient(
+      store,
+      direct,
+      undefined,
+      relayJson,
+    );
+
+    await expect(
+      client.claimPairing(pairingDescriptor, {
+        name: 'Android phone',
+        platform: 'android',
+      }),
+    ).resolves.toMatchObject({ ...claimPayload, transport: 'direct' });
+    expect(relayJsonMock).toHaveBeenCalledTimes(1);
+    expect(directMock).toHaveBeenCalledTimes(2);
+    expect(directMock.mock.calls.map(call => call[0].path)).toEqual([
+      '/health',
+      '/remote/pairing/claim',
+    ]);
+    expect(directMock.mock.calls[1][0].body).toMatchObject({
+      challengeId: 'challenge-1',
+      transport: 'direct',
+    });
+  });
+
+  it('does not retry a dispatched Relay claim through Direct', async () => {
+    const store = new MemoryDeviceCredentialStore();
+    const directMock = jest.fn();
+    const direct: JsonTransport = async request => {
+      directMock(request);
+      return request.parse(claimPayload);
+    };
+    const relayJsonMock = jest.fn();
+    const relayJson: RelayJsonTransport = async (endpoint, request) => {
+      relayJsonMock(endpoint, request);
+      if (request.path === '/health') return request.parse({ status: 'ok' });
+      throw new RemoteHostError('RELAY_DISCONNECTED', 'relay disconnected');
+    };
+    const client = new RemoteMiraHostClient(
+      store,
+      direct,
+      undefined,
+      relayJson,
+    );
+
+    await expect(
+      client.claimPairing(pairingDescriptor, {
+        name: 'Android phone',
+        platform: 'android',
+      }),
+    ).rejects.toMatchObject({ code: 'RELAY_DISCONNECTED' });
+    expect(relayJsonMock).toHaveBeenCalledTimes(2);
+    expect(directMock).not.toHaveBeenCalled();
+  });
+
   it('falls back from Direct network failure to Relay for idempotent JSON requests', async () => {
     const store = new MemoryDeviceCredentialStore();
     await store.save({

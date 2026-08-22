@@ -39,6 +39,7 @@ export interface PairingClaimRequest {
   code: string;
   deviceName: string;
   platform: string;
+  transport?: 'relay' | 'direct';
   publicKey?: string;
   requestedScopes?: RemoteDeviceScope[];
 }

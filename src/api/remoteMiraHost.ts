@@ -441,24 +441,35 @@ export class RemoteMiraHostClient {
   private async selectPairingTransport(
     descriptor: PairingDescriptorV1,
   ): Promise<RemoteTransportKind> {
-    if (!descriptor.hostUrl) return 'relay';
-    if (!descriptor.relay) return 'direct';
-
-    try {
-      await this.jsonTransport({
-        hostUrl: descriptor.hostUrl,
-        path: '/health',
-        allowInsecureDevelopment: __DEV__,
-        raw: true,
-        parse: value => value,
-      });
-      this.directRetryAfter = 0;
-      return 'direct';
-    } catch (error) {
-      if (!isDirectNetworkError(error)) throw error;
-      this.directRetryAfter = Date.now() + DIRECT_RETRY_COOLDOWN_MS;
-      return 'relay';
+    if (descriptor.relay) {
+      try {
+        await this.requestJsonOnTransport(descriptor, 'relay', {
+          path: '/health',
+          raw: true,
+          parse: value => value,
+        });
+        return 'relay';
+      } catch (error) {
+        if (!isRelayTransportError(error) || !descriptor.hostUrl) throw error;
+      }
     }
+
+    if (!descriptor.hostUrl) {
+      throw new RemoteHostError(
+        'PAIRING_ENDPOINT_UNAVAILABLE',
+        'No Mira pairing endpoint is available',
+      );
+    }
+
+    await this.jsonTransport({
+      hostUrl: descriptor.hostUrl,
+      path: '/health',
+      allowInsecureDevelopment: __DEV__,
+      raw: true,
+      parse: value => value,
+    });
+    this.directRetryAfter = 0;
+    return 'direct';
   }
 
   private async claimPairingOnTransport(
@@ -474,6 +485,7 @@ export class RemoteMiraHostClient {
         code: descriptor.code,
         deviceName: normalizeDeviceName(identity.name),
         platform: identity.platform ?? Platform.OS,
+        transport,
         ...(identity.publicKey ? { publicKey: identity.publicKey } : {}),
         ...(identity.requestedScopes
           ? { requestedScopes: identity.requestedScopes }

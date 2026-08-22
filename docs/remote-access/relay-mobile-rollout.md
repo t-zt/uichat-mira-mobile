@@ -77,7 +77,7 @@ Mobile 打开一次配对请求
   -> 保存该设备可用的多个 endpoint
 ```
 
-后续连接默认：
+首次配对默认优先 Relay；Relay 在 claim 前不可达时才回退 Direct。配对完成后的日常连接默认：
 
 ```text
 模式：自动

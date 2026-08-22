@@ -47,6 +47,18 @@ relayToken=<required with relay>
 
 ## Selection
 
+首次配对与配对后的业务请求使用不同的选择顺序。
+
+配对阶段：
+
+- Relay endpoint 存在时先通过 Relay 请求 `/health`。
+- Relay preflight 成功后，只通过 Relay 提交一次 claim。
+- Relay preflight 发生 Transport 错误时，才在 claim 前回退 Direct。
+- claim 已发出但响应不确定时，不跨 Transport 自动重发。
+- claim 上报实际选择的 `relay` / `direct`，只供 Desktop 展示，不参与授权。
+
+配对后的业务请求：
+
 - Direct 可用时优先。
 - Direct 仅在网络层失败时回退 Relay。
 - 401/403、业务 HTTP 错误、协议解析错误不触发跨 Transport fallback。
