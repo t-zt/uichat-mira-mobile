@@ -6,6 +6,8 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -30,6 +32,53 @@ type CameraState =
 
 const cameraPermission: Permission =
   Platform.OS === 'ios' ? PERMISSIONS.IOS.CAMERA : PERMISSIONS.ANDROID.CAMERA;
+
+interface ManualCodeEntryProps {
+  error?: string | null;
+  onSubmit: (code: string) => void;
+}
+
+function ManualCodeEntry({ error, onSubmit }: ManualCodeEntryProps) {
+  const [code, setCode] = useState('');
+
+  const handleSubmit = () => {
+    const trimmed = code.trim();
+    if (!trimmed) return;
+    onSubmit(trimmed);
+  };
+
+  return (
+    <View style={styles.manualPanel}>
+      {error ? <Text style={styles.manualError}>{error}</Text> : null}
+      <Text style={styles.manualTitle}>手动输入配对链接</Text>
+      <Text style={styles.manualHint}>
+        请从 Mira Desktop 复制完整的二维码配对链接并粘贴到下方。
+      </Text>
+      <TextInput
+        style={styles.manualInput}
+        value={code}
+        onChangeText={setCode}
+        placeholder="mira://pair?version=1&relayId=…&code=…"
+        placeholderTextColor="#8a8a90"
+        autoCapitalize="none"
+        autoCorrect={false}
+        autoComplete="off"
+        multiline
+      />
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="使用此配对链接"
+        onPress={handleSubmit}
+        style={({ pressed }) => [
+          styles.manualSubmit,
+          pressed && styles.pressed,
+        ]}
+      >
+        <Text style={styles.manualSubmitText}>使用此配对链接</Text>
+      </Pressable>
+    </View>
+  );
+}
 
 interface PairingScannerModalProps {
   visible: boolean;
@@ -140,9 +189,7 @@ export function PairingScannerModal({
               onError={() => setCameraState('unavailable')}
             />
             {scanError ? (
-              <View style={styles.errorBanner}>
-                <Text style={styles.errorText}>{scanError}</Text>
-              </View>
+              <ManualCodeEntry error={scanError} onSubmit={handleReadCode} />
             ) : null}
           </View>
         ) : cameraState === 'checking' ? (
@@ -187,6 +234,9 @@ export function PairingScannerModal({
             ) : null}
           </View>
         )}
+        {!cameraState || (cameraState !== 'granted' && cameraState !== 'checking') ? (
+          <ManualCodeEntry onSubmit={handleReadCode} />
+        ) : null}
       </SafeAreaView>
     </Modal>
   );
@@ -214,7 +264,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   headerSpacer: { width: 44 },
-  cameraContainer: { flex: 1, overflow: 'hidden' },
+  cameraContainer: {
+    flex: 1,
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
+  },
   centered: {
     flex: 1,
     alignItems: 'center',
@@ -239,18 +293,54 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   actionText: { color: '#111111', fontSize: 15, fontWeight: '700' },
-  errorBanner: {
-    position: 'absolute',
-    left: 24,
-    right: 24,
-    bottom: 36,
+  manualPanel: {
+    alignSelf: 'stretch',
+    backgroundColor: 'rgba(20, 20, 24, 0.96)',
+    borderTopWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 34,
+  },
+  manualError: {
+    color: '#fca5a5',
+    fontSize: 13,
+    lineHeight: 20,
+    marginBottom: 10,
+  },
+  manualTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  manualHint: {
+    color: '#c9c9ce',
+    fontSize: 13,
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  manualInput: {
+    minHeight: 92,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.22)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    color: '#ffffff',
+    fontSize: 13,
+    lineHeight: 19,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 14,
+    textAlignVertical: 'top',
+  },
+  manualSubmit: {
     minHeight: 48,
-    borderRadius: 8,
-    backgroundColor: 'rgba(127, 29, 29, 0.94)',
+    borderRadius: 24,
+    backgroundColor: '#ffffff',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 16,
   },
-  errorText: { color: '#ffffff', fontSize: 14, textAlign: 'center' },
+  manualSubmitText: { color: '#111111', fontSize: 15, fontWeight: '700' },
   pressed: { opacity: 0.72 },
 });
